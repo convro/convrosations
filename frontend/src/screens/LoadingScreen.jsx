@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { Check } from "lucide-react";
 
 export default function LoadingScreen({ topic, currentStep }) {
   const [dots, setDots] = useState(".");
@@ -9,83 +11,58 @@ export default function LoadingScreen({ topic, currentStep }) {
   }, []);
 
   const steps = [
-    { key: "start",      label: "Analizuję tezę" },
-    { key: "group_meta", label: "Generuję nazwę grupy" },
-    { key: "agents",     label: "Agenci formułują stanowiska" },
+    { key: "start",      label: "Analyzing thesis" },
+    { key: "group_meta", label: "Generating group name" },
+    { key: "agents",     label: "Agents forming positions" },
   ];
 
   const currentIdx = steps.findIndex(s => s.key === currentStep);
 
   return (
-    <div style={{
-      flex: 1,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "40px 32px",
-      animation: "fadeIn 0.4s ease",
-    }}>
-      {/* Spinner */}
-      <div style={{
-        width: 60, height: 60, borderRadius: "50%",
-        border: "3px solid #1a2438",
-        borderTop: "3px solid #2AABEE",
-        animation: "spin 0.9s linear infinite",
-        marginBottom: 36,
-        boxShadow: "0 0 20px rgba(42,171,238,0.2)",
-      }} />
+    <div className="loading">
+      <div className="loading__spinner" />
 
-      {/* Steps */}
-      <div style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 10, marginBottom: 32 }}>
+      <div className="loading__steps">
         {steps.map((step, i) => {
           const done = currentIdx > i;
           const active = currentIdx === i;
+          const pending = !done && !active;
+          const cls = done ? "loading__step--done" : active ? "loading__step--active" : "loading__step--pending";
+
           return (
-            <div key={step.key} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: active ? "#1e3050" : done ? "#1a2438" : "#141e2e",
-              borderRadius: 12,
-              padding: "12px 16px",
-              border: `1px solid ${active ? "#2AABEE44" : done ? "#2AABEE22" : "#1e2d44"}`,
-              transition: "all 0.3s ease",
-              opacity: i > currentIdx + 1 ? 0.4 : 1,
-            }}>
-              <div style={{
-                width: 24, height: 24, borderRadius: "50%", flexShrink: 0,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                background: done ? "#2AABEE" : active ? "#2AABEE22" : "#1a2438",
-                border: `2px solid ${done || active ? "#2AABEE" : "#2a3a52"}`,
-                fontSize: 12,
-                transition: "all 0.3s",
-              }}>
-                {done ? "✓" : active ? <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#2AABEE", animation: "pulse 1s ease-in-out infinite" }} /> : ""}
+            <motion.div
+              key={step.key}
+              className={`loading__step ${cls}`}
+              initial={{ opacity: 0, x: -8 }}
+              animate={{ opacity: pending ? 0.3 : done ? 0.6 : 1, x: 0 }}
+              transition={{ delay: i * 0.08, duration: 0.3 }}
+            >
+              <div className="loading__step-indicator">
+                {done ? <Check size={14} strokeWidth={3} /> : active ? (
+                  <motion.div
+                    style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }}
+                    animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 1.2, repeat: Infinity }}
+                  />
+                ) : null}
               </div>
-              <span style={{
-                fontSize: 14,
-                color: active ? "#e8f0fe" : done ? "#7a9cc0" : "#3a5275",
-                fontWeight: active ? 600 : 400,
-                transition: "all 0.3s",
-              }}>
-                {step.label}{active ? dots : done ? "" : ""}
+              <span className="loading__step-label">
+                {step.label}{active ? dots : ""}
               </span>
-            </div>
+            </motion.div>
           );
         })}
       </div>
 
-      {/* Topic reminder */}
-      <div style={{
-        background: "#1a2438", borderRadius: 12, padding: "12px 20px",
-        maxWidth: 360, width: "100%",
-      }}>
-        <div style={{ color: "#3a5275", fontSize: 10, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-          Temat debaty
-        </div>
-        <div style={{ color: "#8aabcc", fontSize: 13, lineHeight: 1.5, fontStyle: "italic" }}>
-          "{topic}"
-        </div>
-      </div>
+      <motion.div
+        className="loading__topic"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div className="loading__topic-label">Debate topic</div>
+        <div className="loading__topic-text">"{topic}"</div>
+      </motion.div>
     </div>
   );
 }
