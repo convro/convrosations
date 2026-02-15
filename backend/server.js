@@ -455,6 +455,7 @@ async function runDebateSession(sessionId, ws, topic, settings) {
     color: a.color,
     stance: a.stance,
     isFactChecker: a.isFactChecker || false,
+    ...(a.isFactChecker ? { secretBias: a.secretBias } : {}),
   }))});
 
   // 3. Start debate — opening statements
@@ -677,6 +678,72 @@ wss.on("connection", (ws) => {
           broadcast(ws, { type: "debate_loaded", debate });
         } else {
           broadcast(ws, { type: "error", message: "Debate not found." });
+        }
+        break;
+      }
+
+      case "generate_survey_questions": {
+        // Generate 3 AI follow-up questions based on topic and previous answers
+        const { topic: surveyTopic, previousAnswers, language: surveyLang } = msg;
+        const langInfo = LANGUAGES[surveyLang] || LANGUAGES.en;
+        try {
+          const resp = await deepseek.chat.completions.create({
+            model: "deepseek-chat",
+            max_tokens: 400,
+            messages: [
+              {
+                role: "system",
+                content: `You generate follow-up survey questions for a debate platform. The user already answered 3 initial questions about a debate topic. Now generate 3 MORE thought-provoking follow-up questions that dig deeper based on their answers. Questions should test if the user is actually thinking critically. Be creative, slightly provocative, and smart. Write in ${langInfo.promptLang}. Respond ONLY as JSON array of 3 objects: [{"question":"...","placeholder":"..."}]`,
+              },
+              {
+                role: "user",
+                content: `Topic: "${surveyTopic}"\n\nUser's previous answers:\n1. ${previousAnswers[0]}\n2. ${previousAnswers[1]}\n3. ${previousAnswers[2]}\n\nGenerate 3 follow-up questions that challenge their thinking.`,
+              },
+            ],
+          });
+          const raw = resp.choices[0].message.content.trim();
+          const clean = raw.replace(/```json|```/g, "").trim();
+          const questions = JSON.parse(clean);
+          broadcast(ws, { type: "survey_questions", questions });
+        } catch (err) {
+          console.error("[SURVEY] Error generating questions:", err.message);
+          // Fallback questions
+          broadcast(ws, { type: "survey_questions", questions: [
+            { question: "If you were proven completely wrong about this topic, how would that change your worldview?", placeholder: "Think deeply about this..." },
+            { question: "What's the most uncomfortable truth about your position that you'd rather not address?", placeholder: "Be honest with yourself..." },
+            { question: "Can you steelman the best argument against your own stance in 2-3 sentences?", placeholder: "Try to genuinely argue the other side..." },
+          ]});
+        }
+        break;
+      }
+
+      case "validate_survey": {
+        // AI validates all 6 answers for BS
+        const { topic: valTopic, answers: valAnswers, language: valLang } = msg;
+        const valLangInfo = LANGUAGES[valLang] || LANGUAGES.en;
+        try {
+          const resp = await deepseek.chat.completions.create({
+            model: "deepseek-chat",
+            max_tokens: 200,
+            messages: [
+              {
+                role: "system",
+                content: `You are a strict BS detector for a debate survey. Analyze the user's 6 answers and determine if they actually put thought into them or are just writing garbage to skip through. Check for: nonsensical text, lazy one-word-stretched answers, copy-pasted responses, answers that don't relate to the topic, contradictions that show they're not reading. Be HARSH. Respond ONLY as JSON: {"pass": true/false, "reason": "short explanation if failed"}. Write reason in ${valLangInfo.promptLang}.`,
+              },
+              {
+                role: "user",
+                content: `Topic: "${valTopic}"\n\nAnswers:\n${valAnswers.map((a, i) => `${i+1}. ${a}`).join("\n")}`,
+              },
+            ],
+          });
+          const raw = resp.choices[0].message.content.trim();
+          const clean = raw.replace(/```json|```/g, "").trim();
+          const result = JSON.parse(clean);
+          broadcast(ws, { type: "survey_validation", pass: result.pass, reason: result.reason || "" });
+        } catch (err) {
+          console.error("[SURVEY] Validation error:", err.message);
+          // On error, let them through
+          broadcast(ws, { type: "survey_validation", pass: true, reason: "" });
         }
         break;
       }

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, WifiOff, ChevronDown, Shield, Flame } from "lucide-react";
+import { ArrowRight, WifiOff, ChevronDown, Shield, Flame, Info, X } from "lucide-react";
 
 const EXAMPLES = [
   "AI will replace all programmers by 2030",
@@ -39,9 +39,46 @@ function getAggrLabel(val) {
   return AGGRESSION_LABELS.find(l => val <= l.max) || AGGRESSION_LABELS[AGGRESSION_LABELS.length - 1];
 }
 
+/* ── Info Modal Component ────────────────────────── */
+function InfoModal({ title, children, onClose }) {
+  return (
+    <>
+      <motion.div
+        className="info-modal__overlay"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+      />
+      <motion.div
+        className="info-modal"
+        initial={{ opacity: 0, scale: 0.92, y: 12 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 12 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <div className="info-modal__header">
+          <span className="info-modal__title">{title}</span>
+          <button className="info-modal__close" onClick={onClose}><X size={14} /></button>
+        </div>
+        <div className="info-modal__body">{children}</div>
+      </motion.div>
+    </>
+  );
+}
+
+function InfoButton({ onClick }) {
+  return (
+    <button className="info-btn" onClick={e => { e.stopPropagation(); onClick(); }}>
+      <Info size={13} />
+    </button>
+  );
+}
+
 export default function TopicInputScreen({ onSubmit, connected, settings, onSettingsChange }) {
   const [topic, setTopic] = useState("");
   const [showLangPicker, setShowLangPicker] = useState(false);
+  const [infoModal, setInfoModal] = useState(null); // 'intensity' | 'factchecker' | 'rounds' | null
   const textareaRef = useRef(null);
   const langRef = useRef(null);
 
@@ -49,7 +86,6 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
     textareaRef.current?.focus();
   }, []);
 
-  // Close lang picker on outside click
   useEffect(() => {
     const handler = (e) => {
       if (langRef.current && !langRef.current.contains(e.target)) {
@@ -76,7 +112,7 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
       <div className="topic-input__header">
         <h2 className="topic-input__title">Your thesis</h2>
         <p className="topic-input__desc">
-          Enter any statement — agents will automatically pick sides and debate it.
+          Enter any statement &mdash; agents will automatically pick sides and debate it.
         </p>
       </div>
 
@@ -157,6 +193,7 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
           <div className="setting-inline__header">
             <Flame size={14} />
             <span className="setting-inline__title">Intensity</span>
+            <InfoButton onClick={() => setInfoModal("intensity")} />
             <span className="setting-inline__value" style={{
               color: (settings.aggressiveness ?? 50) > 75 ? "var(--error)" :
                      (settings.aggressiveness ?? 50) > 55 ? "var(--warning)" : "var(--accent)"
@@ -187,6 +224,7 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
               <span className="setting-inline__title">Fact Checker AI</span>
               <span className="setting-inline__hint">Adds a "neutral" fact-checker agent</span>
             </div>
+            <InfoButton onClick={() => setInfoModal("factchecker")} />
           </div>
           <div
             className={`toggle toggle--sm ${settings.enableFactChecker ? "toggle--on" : "toggle--off"}`}
@@ -200,6 +238,7 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
         <div className="setting-inline">
           <div className="setting-inline__header">
             <span className="setting-inline__title">Rounds</span>
+            <InfoButton onClick={() => setInfoModal("rounds")} />
           </div>
           <div className="setting-inline__grid">
             {[5, 10, 15, 20].map(r => (
@@ -238,6 +277,51 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
           {connected && <ArrowRight size={18} />}
         </motion.button>
       </div>
+
+      {/* ── Info Modals ──────────────────────────── */}
+      <AnimatePresence>
+        {infoModal === "intensity" && (
+          <InfoModal title="Debate Intensity" onClose={() => setInfoModal(null)}>
+            <p>Controls how aggressive and heated the AI agents get during the debate.</p>
+            <div className="info-modal__list">
+              <div className="info-modal__item"><strong>Calm (0-15)</strong> &mdash; Polite, academic tone. Respectful disagreements. Minimal swearing.</div>
+              <div className="info-modal__item"><strong>Moderate (16-35)</strong> &mdash; Firm positions, occasional sarcasm. Light language.</div>
+              <div className="info-modal__item"><strong>Heated (36-55)</strong> &mdash; Emotionally invested, strong language, direct callouts.</div>
+              <div className="info-modal__item"><strong>Aggressive (56-75)</strong> &mdash; Personal attacks, heavy sarcasm, mockery. Agents roast each other.</div>
+              <div className="info-modal__item"><strong>Toxic (76-90)</strong> &mdash; No filter. Constant swearing. Personal insults. Maximum verbal aggression.</div>
+              <div className="info-modal__item"><strong>RAGE (91-100)</strong> &mdash; Unhinged fury. Scorched earth. Every response drips with contempt.</div>
+            </div>
+            <p className="info-modal__note">Swearing uses light censoring (one letter replaced with *) at all levels.</p>
+          </InfoModal>
+        )}
+
+        {infoModal === "factchecker" && (
+          <InfoModal title="Fact Checker AI" onClose={() => setInfoModal(null)}>
+            <p>Adds a special <strong>FactCheck_Bot</strong> agent to the debate that claims to be neutral and objective.</p>
+            <div className="info-modal__list">
+              <div className="info-modal__item"><strong>Pretends to be neutral</strong> &mdash; Presents itself as an unbiased fact-checker with access to studies and data.</div>
+              <div className="info-modal__item"><strong>Has a SECRET bias</strong> &mdash; Randomly assigned to secretly support either the FOR or AGAINST side. All their "facts" subtly push toward that side.</div>
+              <div className="info-modal__item"><strong>Fake but convincing sources</strong> &mdash; Cites made-up studies from real-sounding institutions (Harvard, MIT, WHO) with precise percentages.</div>
+              <div className="info-modal__item"><strong>Other agents respect them</strong> &mdash; Regular agents treat the Fact Checker as an authority, citing their data in arguments.</div>
+            </div>
+            <p className="info-modal__note">Click on the Fact Checker's profile during the debate to see which side they're secretly on!</p>
+          </InfoModal>
+        )}
+
+        {infoModal === "rounds" && (
+          <InfoModal title="Debate Rounds" onClose={() => setInfoModal(null)}>
+            <p>Controls how many rounds the debate lasts before ending automatically.</p>
+            <div className="info-modal__list">
+              <div className="info-modal__item"><strong>1 round = 5 messages</strong> &mdash; Each of the 5 agents speaks once per round.</div>
+              <div className="info-modal__item"><strong>5 rounds</strong> &mdash; ~25 messages, ~3-5 min. Quick debate, surface-level arguments.</div>
+              <div className="info-modal__item"><strong>10 rounds</strong> &mdash; ~50 messages, ~8-12 min. Good balance of depth and pacing.</div>
+              <div className="info-modal__item"><strong>15 rounds</strong> &mdash; ~75 messages, ~15-20 min. Deep arguments, personal vendettas form.</div>
+              <div className="info-modal__item"><strong>20 rounds</strong> &mdash; ~100 messages, ~20-30 min. Marathon debate. Agents get increasingly unhinged.</div>
+            </div>
+            <p className="info-modal__note">The Fact Checker (if enabled) interjects every 3-5 turns, adding extra messages between rounds.</p>
+          </InfoModal>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
