@@ -6,7 +6,7 @@ import Avatar from "./Avatar.jsx";
 const TABS = ["info", "members", "settings"];
 const TAB_LABELS = { info: "Info", members: "Members", settings: "Settings" };
 
-export default function GroupInfoPanel({ group, agents, settings, onSettingsChange, onClose }) {
+export default function GroupInfoPanel({ group, agents, settings, onSettingsChange, onClose, onAgentClick }) {
   const [tab, setTab] = useState("info");
 
   return (
@@ -55,7 +55,7 @@ export default function GroupInfoPanel({ group, agents, settings, onSettingsChan
 
             <div className="panel-card">
               <div className="panel-card__label">Description</div>
-              <p className="panel-card__text">{group?.description || "—"}</p>
+              <p className="panel-card__text">{group?.description || "\u2014"}</p>
             </div>
 
             <div className="panel-info__stats">
@@ -92,11 +92,16 @@ export default function GroupInfoPanel({ group, agents, settings, onSettingsChan
             <div className="panel-divider" />
 
             {agents.map(agent => {
-              const stanceLabel = agent.stance === "for" ? "For"
+              const stanceLabel = agent.isFactChecker ? "Fact Checker"
+                : agent.stance === "for" ? "For"
                 : agent.stance === "against" ? "Against"
                 : "Neutral";
               return (
-                <div key={agent.id} className="panel-member">
+                <div
+                  key={agent.id}
+                  className="panel-member panel-member--clickable"
+                  onClick={() => onAgentClick?.(agent)}
+                >
                   <Avatar agent={agent} size={40} showOnline />
                   <div className="panel-member__info">
                     <div className="panel-member__name">{agent.name}</div>
