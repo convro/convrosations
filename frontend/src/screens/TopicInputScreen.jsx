@@ -234,6 +234,34 @@ export default function TopicInputScreen({ onSubmit, connected, settings, onSett
           </div>
         </div>
 
+        {/* Fact Checker Bias selector - only show when FC is enabled */}
+        {settings.enableFactChecker && (
+          <div className="setting-inline">
+            <div className="setting-inline__header">
+              <Shield size={14} />
+              <span className="setting-inline__title">FC Secret Bias</span>
+              <span className="setting-inline__hint" style={{ marginLeft: "auto" }}>
+                {settings.factCheckerBias === "for" ? "Always FOR" : settings.factCheckerBias === "against" ? "Always AGAINST" : "Random 50/50"}
+              </span>
+            </div>
+            <div className="setting-inline__grid">
+              {[
+                { value: "random", label: "Random" },
+                { value: "for", label: "FOR" },
+                { value: "against", label: "AGAINST" },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  className={`setting-inline__grid-btn ${settings.factCheckerBias === opt.value ? "setting-inline__grid-btn--active" : ""}`}
+                  onClick={() => onSettingsChange({ ...settings, factCheckerBias: opt.value })}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Max rounds */}
         <div className="setting-inline">
           <div className="setting-inline__header">

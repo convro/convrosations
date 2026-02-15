@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Avatar from "./Avatar.jsx";
 import { Reply, Forward, X } from "lucide-react";
@@ -10,6 +10,33 @@ const messageVariants = {
     transition: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
   },
 };
+
+// Render text with @mention highlighting
+function RenderText({ text, agents }) {
+  if (!text || !agents?.length) return text;
+
+  const mentionPattern = agents
+    .filter(a => a.handle)
+    .map(a => a.handle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+
+  if (!mentionPattern) return text;
+
+  const regex = new RegExp(`(${mentionPattern})`, "gi");
+  const parts = text.split(regex);
+
+  return parts.map((part, i) => {
+    const agent = agents.find(a => a.handle && a.handle.toLowerCase() === part.toLowerCase());
+    if (agent) {
+      return (
+        <span key={i} className="mention" style={{ color: agent.color, background: `${agent.color}15` }}>
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
 
 export default function Message({ msg, agents, onReply, onForward, onAvatarClick, replyTo }) {
   const [showActions, setShowActions] = useState(false);
@@ -41,7 +68,6 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
     setShowActions(true);
   }, []);
 
-  // Find reply-to message agent
   const replyAgent = replyTo ? agents.find(a => a.id === replyTo.agentId) : null;
 
   /* -- User message --------------------------------- */
@@ -67,7 +93,6 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
           )}
           <div className="message__user-bubble">{msg.text}</div>
           <span className="message__time message__time--user">{msg.time}</span>
-
           <AnimatePresence>
             {showActions && (
               <MessageActions
@@ -89,33 +114,13 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
 
   let stanceBadge;
   if (agent.isFactChecker) {
-    stanceBadge = {
-      label: "FACT CHECK",
-      bg: "rgba(255, 215, 0, 0.1)",
-      color: "#FFD700",
-      border: "rgba(255, 215, 0, 0.2)",
-    };
+    stanceBadge = { label: "FACT CHECK", bg: "rgba(255, 215, 0, 0.1)", color: "#FFD700", border: "rgba(255, 215, 0, 0.2)" };
   } else if (agent.stance === "for") {
-    stanceBadge = {
-      label: "FOR",
-      bg: "rgba(52, 211, 153, 0.08)",
-      color: "#34d399",
-      border: "rgba(52, 211, 153, 0.15)",
-    };
+    stanceBadge = { label: "FOR", bg: "rgba(52, 211, 153, 0.08)", color: "#34d399", border: "rgba(52, 211, 153, 0.15)" };
   } else if (agent.stance === "against") {
-    stanceBadge = {
-      label: "AGAINST",
-      bg: "rgba(251, 113, 133, 0.08)",
-      color: "#fb7185",
-      border: "rgba(251, 113, 133, 0.15)",
-    };
+    stanceBadge = { label: "AGAINST", bg: "rgba(251, 113, 133, 0.08)", color: "#fb7185", border: "rgba(251, 113, 133, 0.15)" };
   } else {
-    stanceBadge = {
-      label: "NEUTRAL",
-      bg: "rgba(148, 163, 184, 0.08)",
-      color: "#94a3b8",
-      border: "rgba(148, 163, 184, 0.15)",
-    };
+    stanceBadge = { label: "NEUTRAL", bg: "rgba(148, 163, 184, 0.08)", color: "#94a3b8", border: "rgba(148, 163, 184, 0.15)" };
   }
 
   return (
@@ -131,14 +136,10 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
           <span className="message__agent-name" style={{ color: agent.color }} onClick={() => onAvatarClick?.(agent)}>
             {agent.name}
           </span>
-          <span
-            className="message__stance-badge"
-            style={{
-              color: stanceBadge.color,
-              background: stanceBadge.bg,
-              border: `1px solid ${stanceBadge.border}`,
-            }}
-          >
+          {agent.handle && (
+            <span className="message__agent-handle">{agent.handle}</span>
+          )}
+          <span className="message__stance-badge" style={{ color: stanceBadge.color, background: stanceBadge.bg, border: `1px solid ${stanceBadge.border}` }}>
             {stanceBadge.label}
           </span>
         </div>
@@ -155,10 +156,8 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
           </div>
         )}
 
-        <div
-          className={`message__agent-bubble ${agent.isFactChecker ? "message__agent-bubble--fc" : ""}`}
-        >
-          {msg.text}
+        <div className={`message__agent-bubble ${agent.isFactChecker ? "message__agent-bubble--fc" : ""}`}>
+          <RenderText text={msg.text} agents={agents} />
         </div>
         <span className="message__time">{msg.time}</span>
 
@@ -180,13 +179,7 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
 function MessageActions({ onReply, onForward, onClose, align }) {
   return (
     <>
-      <motion.div
-        className="message-actions__overlay"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      />
+      <motion.div className="message-actions__overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
       <motion.div
         className={`message-actions ${align === "right" ? "message-actions--right" : "message-actions--left"}`}
         initial={{ opacity: 0, scale: 0.85, y: 8 }}
@@ -194,15 +187,9 @@ function MessageActions({ onReply, onForward, onClose, align }) {
         exit={{ opacity: 0, scale: 0.85, y: 8 }}
         transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
       >
-        <button className="message-actions__btn" onClick={onReply}>
-          <Reply size={15} />
-          <span>Reply</span>
-        </button>
+        <button className="message-actions__btn" onClick={onReply}><Reply size={15} /><span>Reply</span></button>
         <div className="message-actions__divider" />
-        <button className="message-actions__btn" onClick={onForward}>
-          <Forward size={15} />
-          <span>Forward</span>
-        </button>
+        <button className="message-actions__btn" onClick={onForward}><Forward size={15} /><span>Forward</span></button>
       </motion.div>
     </>
   );
