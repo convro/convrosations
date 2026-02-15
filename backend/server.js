@@ -889,9 +889,15 @@ wss.on("connection", (ws) => {
       }
 
       case "validate_survey": {
-        // AI validates all 6 answers for BS
-        const { answers: valAnswers, language: valLang } = msg;
+        // AI validates all 6 question+answer pairs for BS
+        const { qaPairs, language: valLang } = msg;
         const valLangInfo = LANGUAGES[valLang] || LANGUAGES.en;
+
+        // Format Q&A pairs so AI sees the full context
+        const qaFormatted = (qaPairs || []).map((qa, i) =>
+          `Q${i+1}: ${qa.question}\nA${i+1}: ${qa.answer}`
+        ).join("\n\n");
+
         try {
           const resp = await deepseek.chat.completions.create({
             model: "deepseek-chat",
@@ -899,11 +905,11 @@ wss.on("connection", (ws) => {
             messages: [
               {
                 role: "system",
-                content: `You are a strict BS detector for a sponsored survey about Lidl shopping and InPost parcel lockers. Analyze the user's 6 answers and determine if they actually put thought into them or are just writing garbage to skip through. Check for: nonsensical text, lazy one-word-stretched answers, copy-pasted responses, answers that are clearly random gibberish, contradictions that show they're not reading. Be HARSH but fair — the questions are about shopping habits so answers don't need to be academic. Respond ONLY as JSON: {"pass": true/false, "reason": "short explanation if failed"}. Write reason in ${valLangInfo.promptLang}.`,
+                content: `You are a BS detector for a sponsored survey about Lidl shopping and InPost parcel lockers. You will receive question-answer pairs. Analyze whether the user's answers actually ADDRESS the questions asked. Check for: answers that completely ignore the question, nonsensical gibberish, lazy repeated text, copy-pasted identical responses, or obvious trolling. Be fair — if the answer reasonably addresses the question (even casually or humorously), it PASSES. Only fail genuinely garbage/unrelated answers. Respond ONLY as JSON: {"pass": true/false, "reason": "short explanation if failed"}. Write reason in ${valLangInfo.promptLang}.`,
               },
               {
                 role: "user",
-                content: `Survey answers about Lidl & InPost:\n${valAnswers.map((a, i) => `${i+1}. ${a}`).join("\n")}`,
+                content: `Survey question-answer pairs:\n\n${qaFormatted}`,
               },
             ],
           });

@@ -144,9 +144,15 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
 
     // Then send to AI for deeper validation
     if (send) {
+      // Send questions AND answers as pairs so AI knows context
+      const qaPairs = allQuestions.map((q, i) => ({
+        question: q.question,
+        answer: answers[i] || "",
+      })).filter(qa => qa.answer.trim().length > 0);
+
       send({
         type: "validate_survey",
-        answers: answers.filter(a => a.trim().length > 0),
+        qaPairs,
         language: "en",
       });
     } else {
