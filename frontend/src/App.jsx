@@ -8,15 +8,18 @@ import TypingIndicator from "./components/TypingIndicator.jsx";
 import GroupInfoPanel from "./components/GroupInfoPanel.jsx";
 import InputBar from "./components/InputBar.jsx";
 import EndedBanner from "./components/EndedBanner.jsx";
+import AgentProfileCard from "./components/AgentProfileCard.jsx";
 import WelcomeScreen from "./screens/WelcomeScreen.jsx";
 import TopicInputScreen from "./screens/TopicInputScreen.jsx";
 import LoadingScreen from "./screens/LoadingScreen.jsx";
 import DebateHistoryScreen from "./screens/DebateHistoryScreen.jsx";
+import SurveyScreen from "./screens/SurveyScreen.jsx";
 import { Swords, MoreVertical, ArrowLeft, History } from "lucide-react";
 
 const PHASES = {
   WELCOME: "welcome",
   INPUT: "input",
+  SURVEY: "survey",
   LOADING: "loading",
   DEBATE: "debate",
   ENDED: "ended",
@@ -51,6 +54,9 @@ export default function App() {
   const [userInput, setUserInput] = useState("");
   const [loadingStep, setLoadingStep] = useState("start");
   const [debateHistory, setDebateHistory] = useState([]);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [profileAgent, setProfileAgent] = useState(null);
+  const [replyMap, setReplyMap] = useState({}); // msgId -> replyToMsg
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -111,22 +117,52 @@ export default function App() {
   /* -- Actions ------------------------------------- */
   const handleTopicSubmit = useCallback((t) => {
     setTopic(t);
+    setPhase(PHASES.SURVEY);
+  }, []);
+
+  const handleSurveyComplete = useCallback((surveyAnswers) => {
     setMessages([]);
     setAgents([]);
     setGroup(null);
     setTypingAgent(null);
     setLoadingStep("start");
+    setReplyingTo(null);
+    setReplyMap({});
     setPhase(PHASES.LOADING);
-    send({ type: "start_debate", topic: t, settings });
-  }, [send, settings]);
+    send({ type: "start_debate", topic, settings });
+  }, [send, topic, settings]);
 
   const handleUserSend = useCallback(() => {
     const text = userInput.trim();
     if (!text) return;
-    send({ type: "user_message", text });
+    const replyId = replyingTo?.id || null;
+    send({ type: "user_message", text, replyToId: replyId });
+    if (replyingTo) {
+      // We'll add the reply mapping when the message comes back
+      // For now, store pending reply
+      setReplyMap(prev => ({ ...prev, [`pending_${Date.now()}`]: replyingTo }));
+    }
     setUserInput("");
+    setReplyingTo(null);
     inputRef.current?.focus();
-  }, [userInput, send]);
+  }, [userInput, send, replyingTo]);
+
+  const handleReply = useCallback((msg) => {
+    setReplyingTo(msg);
+    inputRef.current?.focus();
+  }, []);
+
+  const handleForward = useCallback((msg) => {
+    // Copy to clipboard
+    const agent = agents.find(a => a.id === msg.agentId);
+    const prefix = msg.isUser ? "You" : (agent?.name || "?");
+    const text = `[${prefix}]: ${msg.text}`;
+    navigator.clipboard?.writeText(text).then(() => {
+      toast.success("Message copied to clipboard");
+    }).catch(() => {
+      toast("Couldn't copy - check permissions");
+    });
+  }, [agents]);
 
   const handleNewDebate = useCallback(() => {
     send({ type: "stop_debate" });
@@ -134,6 +170,8 @@ export default function App() {
     setAgents([]);
     setGroup(null);
     setTypingAgent(null);
+    setReplyingTo(null);
+    setReplyMap({});
     setPhase(PHASES.INPUT);
   }, [send]);
 
@@ -143,6 +181,8 @@ export default function App() {
     setAgents([]);
     setGroup(null);
     setTypingAgent(null);
+    setReplyingTo(null);
+    setReplyMap({});
     setPhase(PHASES.INPUT);
   }, [send]);
 
@@ -161,6 +201,12 @@ export default function App() {
     setGroup(null);
     setPhase(PHASES.INPUT);
   }, []);
+
+  const handleAvatarClick = useCallback((agent) => {
+    setProfileAgent(agent);
+  }, []);
+
+  const replyAgent = replyingTo ? agents.find(a => a.id === replyingTo.agentId) : null;
 
   /* -- Render -------------------------------------- */
   const showChat = phase === PHASES.DEBATE || phase === PHASES.ENDED || phase === PHASES.VIEWING;
@@ -213,6 +259,16 @@ export default function App() {
               </motion.div>
             )}
 
+            {phase === PHASES.SURVEY && (
+              <motion.div key="survey" style={{ flex: 1, display: "flex" }} {...pageVariants}>
+                <SurveyScreen
+                  topic={topic}
+                  onComplete={handleSurveyComplete}
+                  onBack={() => setPhase(PHASES.INPUT)}
+                />
+              </motion.div>
+            )}
+
             {phase === PHASES.LOADING && (
               <motion.div key="loading" style={{ flex: 1, display: "flex" }} {...pageVariants}>
                 <LoadingScreen topic={topic} currentStep={loadingStep} />
@@ -236,6 +292,10 @@ export default function App() {
                   agents={agents}
                   typingAgent={resolvedTypingAgent}
                   messagesEndRef={messagesEndRef}
+                  onReply={handleReply}
+                  onForward={handleForward}
+                  onAvatarClick={handleAvatarClick}
+                  replyMap={replyMap}
                 />
               </motion.div>
             )}
@@ -249,6 +309,9 @@ export default function App() {
             onChange={setUserInput}
             onSend={handleUserSend}
             inputRef={inputRef}
+            replyingTo={replyingTo}
+            replyAgent={replyAgent}
+            onCancelReply={() => setReplyingTo(null)}
           />
         )}
 
@@ -300,8 +363,20 @@ export default function App() {
                 settings={settings}
                 onSettingsChange={setSettings}
                 onClose={() => setShowPanel(false)}
+                onAgentClick={handleAvatarClick}
               />
             </>
+          )}
+        </AnimatePresence>
+
+        {/* -- Agent Profile Card ---------------------- */}
+        <AnimatePresence>
+          {profileAgent && (
+            <AgentProfileCard
+              agent={profileAgent}
+              messages={messages}
+              onClose={() => setProfileAgent(null)}
+            />
           )}
         </AnimatePresence>
       </div>
@@ -341,7 +416,7 @@ function ChatHeader({ group, agents, typingAgent, connected, onInfoClick, onBack
   );
 }
 
-function ChatFeed({ messages, agents, typingAgent, messagesEndRef }) {
+function ChatFeed({ messages, agents, typingAgent, messagesEndRef, onReply, onForward, onAvatarClick, replyMap }) {
   return (
     <div className="chat-feed">
       <div className="chat-feed__date">
@@ -351,7 +426,15 @@ function ChatFeed({ messages, agents, typingAgent, messagesEndRef }) {
       </div>
 
       {messages.map(msg => (
-        <Message key={msg.id} msg={msg} agents={agents} />
+        <Message
+          key={msg.id}
+          msg={msg}
+          agents={agents}
+          onReply={onReply}
+          onForward={onForward}
+          onAvatarClick={onAvatarClick}
+          replyTo={replyMap[msg.id] || null}
+        />
       ))}
 
       {typingAgent && <TypingIndicator agent={typingAgent} />}
