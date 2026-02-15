@@ -11,7 +11,8 @@ import EndedBanner from "./components/EndedBanner.jsx";
 import WelcomeScreen from "./screens/WelcomeScreen.jsx";
 import TopicInputScreen from "./screens/TopicInputScreen.jsx";
 import LoadingScreen from "./screens/LoadingScreen.jsx";
-import { Swords, MoreVertical } from "lucide-react";
+import DebateHistoryScreen from "./screens/DebateHistoryScreen.jsx";
+import { Swords, MoreVertical, ArrowLeft, History } from "lucide-react";
 
 const PHASES = {
   WELCOME: "welcome",
@@ -19,13 +20,17 @@ const PHASES = {
   LOADING: "loading",
   DEBATE: "debate",
   ENDED: "ended",
+  HISTORY: "history",
+  VIEWING: "viewing",
 };
 
 const DEFAULT_SETTINGS = {
   responseDelay: 5,
   maxRounds: 10,
   allowUserJoin: true,
-  aggressiveness: "moderate",
+  aggressiveness: 50,
+  language: "en",
+  enableFactChecker: false,
 };
 
 const pageVariants = {
@@ -45,17 +50,18 @@ export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [userInput, setUserInput] = useState("");
   const [loadingStep, setLoadingStep] = useState("start");
+  const [debateHistory, setDebateHistory] = useState([]);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const { connected, send, on } = useDebateSocket();
 
-  /* ── Auto-scroll ─────────────────────────────────── */
+  /* -- Auto-scroll --------------------------------- */
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, typingAgent]);
 
-  /* ── WebSocket event handlers ────────────────────── */
+  /* -- WebSocket event handlers -------------------- */
   useEffect(() => {
     on("loading_step", ({ step }) => setLoadingStep(step));
     on("group_ready", ({ group }) => setGroup(group));
@@ -79,6 +85,18 @@ export default function App() {
     on("typing_stop", () => {});
     on("debate_end", () => setPhase(PHASES.ENDED));
 
+    on("debate_history", ({ debates }) => {
+      setDebateHistory(debates);
+    });
+
+    on("debate_loaded", ({ debate }) => {
+      setTopic(debate.topic);
+      setMessages(debate.messages);
+      setAgents(debate.agents);
+      setGroup(debate.group);
+      setPhase(PHASES.VIEWING);
+    });
+
     on("error", ({ message }) => {
       console.error("[DEBATE ERROR]", message);
       toast.error(message || "Something went wrong");
@@ -90,7 +108,7 @@ export default function App() {
     ? agents.find(a => a.id === typingAgent.id) || null
     : null;
 
-  /* ── Actions ─────────────────────────────────────── */
+  /* -- Actions ------------------------------------- */
   const handleTopicSubmit = useCallback((t) => {
     setTopic(t);
     setMessages([]);
@@ -119,8 +137,33 @@ export default function App() {
     setPhase(PHASES.INPUT);
   }, [send]);
 
-  /* ── Render ──────────────────────────────────────── */
-  const showChat = phase === PHASES.DEBATE || phase === PHASES.ENDED;
+  const handleExitDebate = useCallback(() => {
+    send({ type: "stop_debate" });
+    setMessages([]);
+    setAgents([]);
+    setGroup(null);
+    setTypingAgent(null);
+    setPhase(PHASES.INPUT);
+  }, [send]);
+
+  const handleShowHistory = useCallback(() => {
+    send({ type: "get_history" });
+    setPhase(PHASES.HISTORY);
+  }, [send]);
+
+  const handleLoadDebate = useCallback((debateId) => {
+    send({ type: "load_debate", debateId });
+  }, [send]);
+
+  const handleBackFromViewing = useCallback(() => {
+    setMessages([]);
+    setAgents([]);
+    setGroup(null);
+    setPhase(PHASES.INPUT);
+  }, []);
+
+  /* -- Render -------------------------------------- */
+  const showChat = phase === PHASES.DEBATE || phase === PHASES.ENDED || phase === PHASES.VIEWING;
 
   return (
     <>
@@ -137,7 +180,7 @@ export default function App() {
       />
 
       <div className="app-shell">
-        {/* ── Chat Header ──────────────────────────── */}
+        {/* -- Chat Header ----------------------------- */}
         {showChat && group && (
           <ChatHeader
             group={group}
@@ -145,10 +188,12 @@ export default function App() {
             typingAgent={resolvedTypingAgent}
             connected={connected}
             onInfoClick={() => setShowPanel(v => !v)}
+            onBack={phase === PHASES.VIEWING ? handleBackFromViewing : handleExitDebate}
+            isViewing={phase === PHASES.VIEWING}
           />
         )}
 
-        {/* ── Main content ─────────────────────────── */}
+        {/* -- Main content ---------------------------- */}
         <div className="app-content">
           <AnimatePresence mode="wait">
             {phase === PHASES.WELCOME && (
@@ -162,6 +207,8 @@ export default function App() {
                 <TopicInputScreen
                   onSubmit={handleTopicSubmit}
                   connected={connected}
+                  settings={settings}
+                  onSettingsChange={setSettings}
                 />
               </motion.div>
             )}
@@ -169,6 +216,16 @@ export default function App() {
             {phase === PHASES.LOADING && (
               <motion.div key="loading" style={{ flex: 1, display: "flex" }} {...pageVariants}>
                 <LoadingScreen topic={topic} currentStep={loadingStep} />
+              </motion.div>
+            )}
+
+            {phase === PHASES.HISTORY && (
+              <motion.div key="history" style={{ flex: 1, display: "flex" }} {...pageVariants}>
+                <DebateHistoryScreen
+                  debates={debateHistory}
+                  onLoad={handleLoadDebate}
+                  onBack={() => setPhase(PHASES.INPUT)}
+                />
               </motion.div>
             )}
 
@@ -185,7 +242,7 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        {/* ── Input bar ────────────────────────────── */}
+        {/* -- Input bar ------------------------------- */}
         {phase === PHASES.DEBATE && settings.allowUserJoin && (
           <InputBar
             value={userInput}
@@ -195,15 +252,37 @@ export default function App() {
           />
         )}
 
-        {/* ── Ended banner ─────────────────────────── */}
+        {/* -- Ended banner ---------------------------- */}
         {phase === PHASES.ENDED && (
           <EndedBanner
             messageCount={group?.messageCount || 0}
             onNewDebate={handleNewDebate}
+            onShowHistory={handleShowHistory}
           />
         )}
 
-        {/* ── Group Info Panel ─────────────────────── */}
+        {/* -- Viewing banner (read-only) -------------- */}
+        {phase === PHASES.VIEWING && (
+          <div className="ended-banner">
+            <div className="ended-banner__info">
+              <div className="ended-banner__title">Viewing past debate</div>
+              <div className="ended-banner__count">{messages.length} messages</div>
+            </div>
+            <button className="ended-banner__btn" onClick={handleBackFromViewing}>
+              <ArrowLeft size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
+              Back
+            </button>
+          </div>
+        )}
+
+        {/* -- History button (on input screen) -------- */}
+        {phase === PHASES.INPUT && (
+          <div className="history-fab" onClick={handleShowHistory}>
+            <History size={18} />
+          </div>
+        )}
+
+        {/* -- Group Info Panel ------------------------ */}
         <AnimatePresence>
           {showPanel && group && (
             <>
@@ -230,26 +309,32 @@ export default function App() {
   );
 }
 
-/* ── Sub-components ──────────────────────────────────── */
+/* -- Sub-components ----------------------------------- */
 
-function ChatHeader({ group, agents, typingAgent, connected, onInfoClick }) {
+function ChatHeader({ group, agents, typingAgent, connected, onInfoClick, onBack, isViewing }) {
   return (
-    <div className="chat-header" onClick={onInfoClick}>
-      <div className="chat-header__avatar">
+    <div className="chat-header">
+      <button className="btn-ghost chat-header__back" onClick={onBack}>
+        <ArrowLeft size={18} />
+      </button>
+
+      <div className="chat-header__avatar" onClick={onInfoClick}>
         <Swords size={20} />
       </div>
 
-      <div className="chat-header__info">
+      <div className="chat-header__info" onClick={onInfoClick}>
         <div className="chat-header__name">{group.name}</div>
         <div className={`chat-header__status ${typingAgent ? "chat-header__status--typing" : ""}`}>
           {typingAgent
             ? `${typingAgent.name} is typing...`
+            : isViewing
+            ? "Past debate"
             : `${agents.length + 1} participants`}
         </div>
       </div>
 
       <div className={`chat-header__dot ${connected ? "chat-header__dot--online" : "chat-header__dot--offline"}`} />
-      <button className="btn-ghost" onClick={e => { e.stopPropagation(); onInfoClick(); }}>
+      <button className="btn-ghost" onClick={onInfoClick}>
         <MoreVertical size={18} />
       </button>
     </div>

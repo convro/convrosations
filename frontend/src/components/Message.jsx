@@ -11,7 +11,7 @@ const messageVariants = {
 };
 
 export default function Message({ msg, agents }) {
-  /* ── User message ────────────────────────────────── */
+  /* -- User message --------------------------------- */
   if (msg.isUser) {
     return (
       <motion.div className="message message--user" {...messageVariants}>
@@ -23,18 +23,43 @@ export default function Message({ msg, agents }) {
     );
   }
 
-  /* ── Agent message ───────────────────────────────── */
+  /* -- Agent message -------------------------------- */
   const agent = agents.find(a => a.id === msg.agentId);
   if (!agent) return null;
 
-  const stanceBadge = agent.stance === "for"
-    ? { label: "FOR", bg: "rgba(72, 187, 120, 0.1)", color: "#68d391", border: "rgba(72, 187, 120, 0.2)" }
-    : agent.stance === "against"
-    ? { label: "AGAINST", bg: "rgba(252, 129, 129, 0.1)", color: "#fc8181", border: "rgba(252, 129, 129, 0.2)" }
-    : { label: "NEUTRAL", bg: "rgba(148, 163, 184, 0.1)", color: "#94a3b8", border: "rgba(148, 163, 184, 0.2)" };
+  let stanceBadge;
+  if (agent.isFactChecker) {
+    stanceBadge = {
+      label: "FACT CHECK",
+      bg: "rgba(255, 215, 0, 0.12)",
+      color: "#FFD700",
+      border: "rgba(255, 215, 0, 0.25)",
+    };
+  } else if (agent.stance === "for") {
+    stanceBadge = {
+      label: "FOR",
+      bg: "rgba(72, 187, 120, 0.1)",
+      color: "#68d391",
+      border: "rgba(72, 187, 120, 0.2)",
+    };
+  } else if (agent.stance === "against") {
+    stanceBadge = {
+      label: "AGAINST",
+      bg: "rgba(252, 129, 129, 0.1)",
+      color: "#fc8181",
+      border: "rgba(252, 129, 129, 0.2)",
+    };
+  } else {
+    stanceBadge = {
+      label: "NEUTRAL",
+      bg: "rgba(148, 163, 184, 0.1)",
+      color: "#94a3b8",
+      border: "rgba(148, 163, 184, 0.2)",
+    };
+  }
 
   return (
-    <motion.div className="message message--agent" {...messageVariants}>
+    <motion.div className={`message message--agent ${agent.isFactChecker ? "message--fact-checker" : ""}`} {...messageVariants}>
       <Avatar agent={agent} size={32} />
       <div className="message__agent-wrap">
         <div className="message__agent-header">
@@ -52,7 +77,10 @@ export default function Message({ msg, agents }) {
             {stanceBadge.label}
           </span>
         </div>
-        <div className="message__agent-bubble" style={{ borderLeftColor: agent.color }}>
+        <div
+          className={`message__agent-bubble ${agent.isFactChecker ? "message__agent-bubble--fc" : ""}`}
+          style={{ borderLeftColor: agent.color }}
+        >
           {msg.text}
         </div>
         <span className="message__time">{msg.time}</span>
