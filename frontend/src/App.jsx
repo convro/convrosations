@@ -14,7 +14,7 @@ import TopicInputScreen from "./screens/TopicInputScreen.jsx";
 import LoadingScreen from "./screens/LoadingScreen.jsx";
 import DebateHistoryScreen from "./screens/DebateHistoryScreen.jsx";
 import SurveyScreen from "./screens/SurveyScreen.jsx";
-import { Swords, MoreVertical, ArrowLeft, History } from "lucide-react";
+import { Swords, MoreVertical, ArrowLeft, History, Trophy } from "lucide-react";
 
 const PHASES = {
   WELCOME: "welcome",
@@ -34,6 +34,7 @@ const DEFAULT_SETTINGS = {
   aggressiveness: 50,
   language: "en",
   enableFactChecker: false,
+  factCheckerBias: "random",
 };
 
 const pageVariants = {
@@ -56,7 +57,12 @@ export default function App() {
   const [debateHistory, setDebateHistory] = useState([]);
   const [replyingTo, setReplyingTo] = useState(null);
   const [profileAgent, setProfileAgent] = useState(null);
-  const [replyMap, setReplyMap] = useState({}); // msgId -> replyToMsg
+  const [replyMap, setReplyMap] = useState({});
+  const [debateSummary, setDebateSummary] = useState(null);
+  const [debateWinner, setDebateWinner] = useState(null);
+
+  // Preserve last debate for history viewing
+  const lastDebateRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -89,7 +95,12 @@ export default function App() {
 
     on("group_update", ({ group }) => setGroup(group));
     on("typing_stop", () => {});
-    on("debate_end", () => setPhase(PHASES.ENDED));
+
+    on("debate_end", (data) => {
+      setDebateSummary(data.summary || null);
+      setDebateWinner(data.winner || null);
+      setPhase(PHASES.ENDED);
+    });
 
     on("debate_history", ({ debates }) => {
       setDebateHistory(debates);
@@ -106,7 +117,7 @@ export default function App() {
     on("error", ({ message }) => {
       console.error("[DEBATE ERROR]", message);
       toast.error(message || "Something went wrong");
-      setPhase(PHASES.INPUT);
+      if (phase === PHASES.LOADING) setPhase(PHASES.INPUT);
     });
   }, [on]);
 
@@ -128,6 +139,8 @@ export default function App() {
     setLoadingStep("start");
     setReplyingTo(null);
     setReplyMap({});
+    setDebateSummary(null);
+    setDebateWinner(null);
     setPhase(PHASES.LOADING);
     send({ type: "start_debate", topic, settings });
   }, [send, topic, settings]);
@@ -135,11 +148,8 @@ export default function App() {
   const handleUserSend = useCallback(() => {
     const text = userInput.trim();
     if (!text) return;
-    const replyId = replyingTo?.id || null;
-    send({ type: "user_message", text, replyToId: replyId });
+    send({ type: "user_message", text, replyToId: replyingTo?.id || null });
     if (replyingTo) {
-      // We'll add the reply mapping when the message comes back
-      // For now, store pending reply
       setReplyMap(prev => ({ ...prev, [`pending_${Date.now()}`]: replyingTo }));
     }
     setUserInput("");
@@ -153,7 +163,6 @@ export default function App() {
   }, []);
 
   const handleForward = useCallback((msg) => {
-    // Copy to clipboard
     const agent = agents.find(a => a.id === msg.agentId);
     const prefix = msg.isUser ? "You" : (agent?.name || "?");
     const text = `[${prefix}]: ${msg.text}`;
@@ -172,19 +181,15 @@ export default function App() {
     setTypingAgent(null);
     setReplyingTo(null);
     setReplyMap({});
+    setDebateSummary(null);
+    setDebateWinner(null);
     setPhase(PHASES.INPUT);
   }, [send]);
 
   const handleExitDebate = useCallback(() => {
-    send({ type: "stop_debate" });
-    setMessages([]);
-    setAgents([]);
-    setGroup(null);
-    setTypingAgent(null);
-    setReplyingTo(null);
-    setReplyMap({});
+    // Don't stop debate on back — just go to input. Debate stays in history.
     setPhase(PHASES.INPUT);
-  }, [send]);
+  }, []);
 
   const handleShowHistory = useCallback(() => {
     send({ type: "get_history" });
@@ -217,16 +222,11 @@ export default function App() {
         position="top-center"
         theme="dark"
         toastOptions={{
-          style: {
-            background: "var(--bg-card)",
-            border: "1px solid var(--border-subtle)",
-            color: "var(--text-primary)",
-          },
+          style: { background: "var(--bg-card)", border: "1px solid var(--border-subtle)", color: "var(--text-primary)" },
         }}
       />
 
       <div className="app-shell">
-        {/* -- Chat Header ----------------------------- */}
         {showChat && group && (
           <ChatHeader
             group={group}
@@ -239,7 +239,6 @@ export default function App() {
           />
         )}
 
-        {/* -- Main content ---------------------------- */}
         <div className="app-content">
           <AnimatePresence mode="wait">
             {phase === PHASES.WELCOME && (
@@ -265,6 +264,8 @@ export default function App() {
                   topic={topic}
                   onComplete={handleSurveyComplete}
                   onBack={() => setPhase(PHASES.INPUT)}
+                  send={send}
+                  on={on}
                 />
               </motion.div>
             )}
@@ -302,7 +303,6 @@ export default function App() {
           </AnimatePresence>
         </div>
 
-        {/* -- Input bar ------------------------------- */}
         {phase === PHASES.DEBATE && settings.allowUserJoin && (
           <InputBar
             value={userInput}
@@ -315,16 +315,36 @@ export default function App() {
           />
         )}
 
-        {/* -- Ended banner ---------------------------- */}
         {phase === PHASES.ENDED && (
-          <EndedBanner
-            messageCount={group?.messageCount || 0}
-            onNewDebate={handleNewDebate}
-            onShowHistory={handleShowHistory}
-          />
+          <div className="ended-section">
+            {/* Summary card */}
+            {debateSummary && (
+              <motion.div
+                className="debate-summary"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {debateWinner && (
+                  <div className={`debate-summary__winner ${debateWinner === "for" ? "debate-summary__winner--for" : debateWinner === "against" ? "debate-summary__winner--against" : "debate-summary__winner--tie"}`}>
+                    <Trophy size={16} />
+                    <span>
+                      {debateWinner === "for" ? "FOR side wins!" : debateWinner === "against" ? "AGAINST side wins!" : "It's a draw!"}
+                    </span>
+                  </div>
+                )}
+                <div className="debate-summary__label">AI Summary</div>
+                <p className="debate-summary__text">{debateSummary}</p>
+              </motion.div>
+            )}
+            <EndedBanner
+              messageCount={group?.messageCount || 0}
+              onNewDebate={handleNewDebate}
+              onShowHistory={handleShowHistory}
+            />
+          </div>
         )}
 
-        {/* -- Viewing banner (read-only) -------------- */}
         {phase === PHASES.VIEWING && (
           <div className="ended-banner">
             <div className="ended-banner__info">
@@ -338,14 +358,12 @@ export default function App() {
           </div>
         )}
 
-        {/* -- History button (on input screen) -------- */}
         {phase === PHASES.INPUT && (
           <div className="history-fab" onClick={handleShowHistory}>
             <History size={18} />
           </div>
         )}
 
-        {/* -- Group Info Panel ------------------------ */}
         <AnimatePresence>
           {showPanel && group && (
             <>
@@ -369,7 +387,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* -- Agent Profile Card ---------------------- */}
         <AnimatePresence>
           {profileAgent && (
             <AgentProfileCard
@@ -392,22 +409,17 @@ function ChatHeader({ group, agents, typingAgent, connected, onInfoClick, onBack
       <button className="btn-ghost chat-header__back" onClick={onBack}>
         <ArrowLeft size={18} />
       </button>
-
       <div className="chat-header__avatar" onClick={onInfoClick}>
         <Swords size={20} />
       </div>
-
       <div className="chat-header__info" onClick={onInfoClick}>
         <div className="chat-header__name">{group.name}</div>
         <div className={`chat-header__status ${typingAgent ? "chat-header__status--typing" : ""}`}>
           {typingAgent
             ? `${typingAgent.name} is typing...`
-            : isViewing
-            ? "Past debate"
-            : `${agents.length + 1} participants`}
+            : isViewing ? "Past debate" : `${agents.length + 1} participants`}
         </div>
       </div>
-
       <div className={`chat-header__dot ${connected ? "chat-header__dot--online" : "chat-header__dot--offline"}`} />
       <button className="btn-ghost" onClick={onInfoClick}>
         <MoreVertical size={18} />
@@ -424,7 +436,6 @@ function ChatFeed({ messages, agents, typingAgent, messagesEndRef, onReply, onFo
           {new Date().toLocaleDateString("en-US", { day: "numeric", month: "long", year: "numeric" })}
         </span>
       </div>
-
       {messages.map(msg => (
         <Message
           key={msg.id}
@@ -436,7 +447,6 @@ function ChatFeed({ messages, agents, typingAgent, messagesEndRef, onReply, onFo
           replyTo={replyMap[msg.id] || null}
         />
       ))}
-
       {typingAgent && <TypingIndicator agent={typingAgent} />}
       <div ref={messagesEndRef} style={{ height: 8 }} />
     </div>

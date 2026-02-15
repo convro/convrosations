@@ -1,47 +1,74 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ArrowLeft, AlertTriangle, CheckCircle, XCircle, Loader } from "lucide-react";
 
-const SURVEY_QUESTIONS = [
+const LIDL_LOGO = "https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftoppng.com%2Fuploads%2Fpreview%2Flidl-vector-logo-download-free-11574087712loacquwwxp.png&f=1&nofb=1&ipt=b916ba89441fba319473d609cf3d2ddc9bbd9526b5816e93ffa81f25bd14da1b";
+const INPOST_LOGO = "https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fimages.seeklogo.com%2Flogo-png%2F52%2F1%2Finpost-logo-png_seeklogo-526687.png&f=1&nofb=1&ipt=dc162b68ac543f44e0e95eb87f2efdbca261c974c3bd78b4fa65b337c074ffbb";
+
+const STATIC_QUESTIONS = [
   {
     id: 1,
-    question: "What's your stance on the topic before the debate starts?",
-    placeholder: "Describe your initial opinion honestly...",
+    question: "How often do you shop at Lidl and what's your go-to item you always grab?",
+    placeholder: "Tell us about your Lidl shopping habits...",
+    sponsor: "lidl",
   },
   {
     id: 2,
-    question: "What's one strong argument you'd expect from the opposing side?",
-    placeholder: "Think critically here...",
+    question: "What's your stance on the topic before the debate starts?",
+    placeholder: "Describe your initial opinion honestly...",
+    sponsor: null,
   },
   {
     id: 3,
-    question: "How do you typically handle disagreements in discussions?",
-    placeholder: "Be honest about your debate style...",
-  },
-  {
-    id: 4,
-    question: "What would change your mind on this topic?",
-    placeholder: "What evidence or argument would make you reconsider...",
-  },
-  {
-    id: 5,
-    question: "Why do you want to watch this debate? What are you hoping to learn?",
-    placeholder: "What's drawing you to this topic...",
+    question: "When was the last time you used an InPost paczkomat and how was the experience?",
+    placeholder: "Share your InPost experience...",
+    sponsor: "inpost",
   },
 ];
 
 const MIN_ANSWER_LENGTH = 15;
+const TOTAL_QUESTIONS = 6;
 
-export default function SurveyScreen({ topic, onComplete, onBack }) {
+export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
   const [currentQ, setCurrentQ] = useState(0);
-  const [answers, setAnswers] = useState(Array(5).fill(""));
+  const [answers, setAnswers] = useState(Array(TOTAL_QUESTIONS).fill(""));
+  const [allQuestions, setAllQuestions] = useState(STATIC_QUESTIONS);
+  const [loadingAIQuestions, setLoadingAIQuestions] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [validationResult, setValidationResult] = useState(null); // null | 'pass' | 'fail'
+  const [validationResult, setValidationResult] = useState(null);
   const [failReason, setFailReason] = useState("");
 
   const currentAnswer = answers[currentQ] || "";
   const canProceed = currentAnswer.trim().length >= MIN_ANSWER_LENGTH;
-  const isLast = currentQ === SURVEY_QUESTIONS.length - 1;
+  const isLast = currentQ === allQuestions.length - 1 && allQuestions.length === TOTAL_QUESTIONS;
+  const q = allQuestions[currentQ];
+  const progress = ((currentQ + 1) / TOTAL_QUESTIONS) * 100;
+
+  // Listen for AI-generated questions from server
+  useEffect(() => {
+    if (!on) return;
+    on("survey_questions", ({ questions }) => {
+      const aiQs = questions.map((q, i) => ({
+        id: 4 + i,
+        question: q.question,
+        placeholder: q.placeholder,
+        sponsor: i === 0 ? "lidl" : i === 2 ? "inpost" : null,
+      }));
+      setAllQuestions(prev => [...STATIC_QUESTIONS, ...aiQs]);
+      setLoadingAIQuestions(false);
+    });
+
+    on("survey_validation", ({ pass, reason }) => {
+      if (pass) {
+        setValidationResult("pass");
+        setTimeout(() => onComplete(answers), 1500);
+      } else {
+        setValidationResult("fail");
+        setFailReason(reason || "Your answers didn't pass the BS check. Try harder.");
+      }
+      setValidating(false);
+    });
+  }, [on, answers, onComplete]);
 
   const handleAnswer = (val) => {
     const newAnswers = [...answers];
@@ -51,12 +78,32 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
 
   const handleNext = () => {
     if (!canProceed) return;
+
+    // After completing 3 static questions, request AI questions
+    if (currentQ === 2 && allQuestions.length === 3) {
+      setLoadingAIQuestions(true);
+      send?.({
+        type: "generate_survey_questions",
+        topic,
+        previousAnswers: answers.slice(0, 3),
+        language: "en",
+      });
+      return;
+    }
+
     if (isLast) {
-      runBSCheck();
+      runValidation();
     } else {
       setCurrentQ(prev => prev + 1);
     }
   };
+
+  // Auto-advance when AI questions arrive
+  useEffect(() => {
+    if (!loadingAIQuestions && allQuestions.length === TOTAL_QUESTIONS && currentQ === 2) {
+      setCurrentQ(3);
+    }
+  }, [loadingAIQuestions, allQuestions.length, currentQ]);
 
   const handleBack = () => {
     if (currentQ > 0) {
@@ -66,51 +113,52 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
     }
   };
 
-  const runBSCheck = () => {
+  const runValidation = () => {
     setValidating(true);
     setValidationResult(null);
 
-    // Client-side BS detection heuristics
-    setTimeout(() => {
-      let bsScore = 0;
-      const allText = answers.join(" ").toLowerCase();
-
-      // Check for repetitive garbage
-      for (let i = 0; i < answers.length; i++) {
-        const a = answers[i].trim().toLowerCase();
-        // Too short after trim
-        if (a.length < 20) bsScore += 2;
-        // Repeated characters (aaaaaa, asdasd)
-        if (/(.)\1{4,}/.test(a)) bsScore += 3;
-        // Same word repeated (test test test)
-        const words = a.split(/\s+/);
-        const uniqueWords = new Set(words);
-        if (words.length > 3 && uniqueWords.size <= 2) bsScore += 3;
-        // Classic spam (asdf, qwerty, etc)
-        if (/^(asdf|qwerty|test|aaa|bbb|123|abc|xxx|lol|idk|ok|yes|no|blah|whatever|nothing|none|na|n\/a)/i.test(a)) bsScore += 2;
-        // Basically same answer for all questions
-        for (let j = i + 1; j < answers.length; j++) {
-          if (a === answers[j].trim().toLowerCase() && a.length > 0) bsScore += 3;
-        }
+    // First do client-side heuristic check
+    let bsScore = 0;
+    for (let i = 0; i < answers.length; i++) {
+      const a = answers[i].trim().toLowerCase();
+      if (a.length < 20) bsScore += 2;
+      if (/(.)\1{4,}/.test(a)) bsScore += 3;
+      const words = a.split(/\s+/);
+      const uniqueWords = new Set(words);
+      if (words.length > 3 && uniqueWords.size <= 2) bsScore += 3;
+      if (/^(asdf|qwerty|test|aaa|bbb|123|abc|xxx|lol|idk|ok|yes|no|blah|whatever|nothing|none|na|n\/a)/i.test(a)) bsScore += 2;
+      for (let j = i + 1; j < answers.length; j++) {
+        if (a === answers[j].trim().toLowerCase() && a.length > 0) bsScore += 3;
       }
+    }
 
-      // Check if answers are contextually empty
-      const totalLen = answers.reduce((sum, a) => sum + a.trim().length, 0);
-      if (totalLen < 100) bsScore += 2;
-
-      if (bsScore >= 5) {
+    if (bsScore >= 6) {
+      setTimeout(() => {
+        setValidating(false);
         setValidationResult("fail");
-        setFailReason(
-          bsScore >= 8
-            ? "Your answers look like complete nonsense. The BS Verificator has spoken. Try again with actual thoughts."
-            : "Some of your answers seem low-effort or repetitive. Put in a bit more thought and try again."
-        );
-      } else {
+        setFailReason(bsScore >= 10
+          ? "Your answers are complete garbage. The BS Verificator is not amused. Try writing actual thoughts."
+          : "Some of your answers seem low-effort or repetitive. Put in more thought.");
+      }, 2000);
+      return;
+    }
+
+    // Then send to AI for deeper validation
+    if (send) {
+      send({
+        type: "validate_survey",
+        topic,
+        answers: answers.filter(a => a.trim().length > 0),
+        language: "en",
+      });
+    } else {
+      // Fallback if no send
+      setTimeout(() => {
+        setValidating(false);
         setValidationResult("pass");
         setTimeout(() => onComplete(answers), 1500);
-      }
-      setValidating(false);
-    }, 2000);
+      }, 2000);
+    }
   };
 
   const handleRetry = () => {
@@ -118,37 +166,39 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
     setCurrentQ(0);
   };
 
-  const q = SURVEY_QUESTIONS[currentQ];
-  const progress = ((currentQ + 1) / SURVEY_QUESTIONS.length) * 100;
+  // Loading AI questions screen
+  if (loadingAIQuestions) {
+    return (
+      <div className="survey">
+        <motion.div className="survey__validation" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+          <div className="survey__validating">
+            <Loader size={32} className="survey__spinner" />
+            <div className="survey__bs-title">Generating questions...</div>
+            <div className="survey__bs-sub">AI is crafting personalized follow-ups based on your answers</div>
+            <div className="survey__bs-bar">
+              <motion.div className="survey__bs-bar-fill" initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 4, ease: "linear" }} />
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   // Validation screen
   if (validating || validationResult) {
     return (
       <div className="survey">
-        <motion.div
-          className="survey__validation"
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-        >
+        <motion.div className="survey__validation" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.3 }}>
           {validating && (
             <div className="survey__validating">
-              <div className="survey__bs-icon">
-                <Loader size={32} className="survey__spinner" />
-              </div>
+              <Loader size={32} className="survey__spinner" />
               <div className="survey__bs-title">BS Verificator</div>
               <div className="survey__bs-sub">Analyzing your responses...</div>
               <div className="survey__bs-bar">
-                <motion.div
-                  className="survey__bs-bar-fill"
-                  initial={{ width: 0 }}
-                  animate={{ width: "100%" }}
-                  transition={{ duration: 1.8, ease: "linear" }}
-                />
+                <motion.div className="survey__bs-bar-fill" initial={{ width: 0 }} animate={{ width: "100%" }} transition={{ duration: 3, ease: "linear" }} />
               </div>
             </div>
           )}
-
           {validationResult === "pass" && (
             <motion.div className="survey__result survey__result--pass" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <CheckCircle size={48} />
@@ -156,21 +206,20 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
               <div className="survey__result-sub">Your responses passed the BS check. Starting debate...</div>
             </motion.div>
           )}
-
           {validationResult === "fail" && (
             <motion.div className="survey__result survey__result--fail" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
               <XCircle size={48} />
               <div className="survey__result-title">BS Detected</div>
               <div className="survey__result-sub">{failReason}</div>
-              <button className="btn-primary" onClick={handleRetry} style={{ marginTop: 24 }}>
-                Try again
-              </button>
+              <button className="btn-primary" onClick={handleRetry} style={{ marginTop: 24 }}>Try again</button>
             </motion.div>
           )}
         </motion.div>
       </div>
     );
   }
+
+  if (!q) return null;
 
   return (
     <div className="survey">
@@ -180,13 +229,9 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
         </button>
         <div className="survey__progress-wrap">
           <div className="survey__progress-bar">
-            <motion.div
-              className="survey__progress-fill"
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-            />
+            <motion.div className="survey__progress-fill" animate={{ width: `${progress}%` }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }} />
           </div>
-          <span className="survey__progress-text">{currentQ + 1}/{SURVEY_QUESTIONS.length}</span>
+          <span className="survey__progress-text">{currentQ + 1}/{TOTAL_QUESTIONS}</span>
         </div>
       </div>
 
@@ -214,12 +259,24 @@ export default function SurveyScreen({ topic, onComplete, onBack }) {
             rows={4}
             autoFocus
           />
-          <div className="survey__char-info">
-            <span className={currentAnswer.trim().length < MIN_ANSWER_LENGTH ? "survey__char-warn" : "survey__char-ok"}>
-              {currentAnswer.trim().length < MIN_ANSWER_LENGTH
-                ? `${MIN_ANSWER_LENGTH - currentAnswer.trim().length} more characters needed`
-                : "Good to go"}
-            </span>
+          <div className="survey__bottom-row">
+            <div className="survey__char-info">
+              <span className={currentAnswer.trim().length < MIN_ANSWER_LENGTH ? "survey__char-warn" : "survey__char-ok"}>
+                {currentAnswer.trim().length < MIN_ANSWER_LENGTH
+                  ? `${MIN_ANSWER_LENGTH - currentAnswer.trim().length} more characters needed`
+                  : "Good to go"}
+              </span>
+            </div>
+            {q.sponsor && (
+              <div className="survey__sponsor">
+                <span className="survey__sponsor-text">sponsored by</span>
+                <img
+                  src={q.sponsor === "lidl" ? LIDL_LOGO : INPOST_LOGO}
+                  alt={q.sponsor}
+                  className="survey__sponsor-logo"
+                />
+              </div>
+            )}
           </div>
         </motion.div>
       </AnimatePresence>

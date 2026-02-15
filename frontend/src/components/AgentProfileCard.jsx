@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { X, TrendingUp, TrendingDown, Minus, Shield } from "lucide-react";
+import { X, TrendingUp, TrendingDown, Minus, Shield, AlertTriangle, Eye } from "lucide-react";
 import Avatar from "./Avatar.jsx";
 
 export default function AgentProfileCard({ agent, messages, onClose }) {
@@ -29,6 +29,9 @@ export default function AgentProfileCard({ agent, messages, onClose }) {
   const summary = lastMsgs.length > 0
     ? lastMsgs.substring(0, 180) + (lastMsgs.length > 180 ? "..." : "")
     : "Hasn't spoken yet.";
+
+  const biasLabel = agent.secretBias === "for" ? "Secretly FOR" : agent.secretBias === "against" ? "Secretly AGAINST" : null;
+  const biasColor = agent.secretBias === "for" ? "#34d399" : "#fb7185";
 
   return (
     <>
@@ -70,8 +73,8 @@ export default function AgentProfileCard({ agent, messages, onClose }) {
           </div>
           <div className="profile-card__stat-divider" />
           <div className="profile-card__stat">
-            <div className="profile-card__stat-val">{agent.isFactChecker ? "N/A" : agent.stance?.toUpperCase()}</div>
-            <div className="profile-card__stat-label">position</div>
+            <div className="profile-card__stat-val">{agent.isFactChecker ? "NEUTRAL" : agent.stance?.toUpperCase()}</div>
+            <div className="profile-card__stat-label">public position</div>
           </div>
           <div className="profile-card__stat-divider" />
           <div className="profile-card__stat">
@@ -86,10 +89,32 @@ export default function AgentProfileCard({ agent, messages, onClose }) {
         </div>
 
         {agent.isFactChecker && (
-          <div className="profile-card__fc-badge">
-            <Shield size={14} />
-            <span>Verified Fact Checker</span>
-          </div>
+          <>
+            <div className="profile-card__fc-badge">
+              <Shield size={14} />
+              <span>Verified Fact Checker</span>
+            </div>
+
+            {biasLabel && (
+              <div className="profile-card__secret-bias">
+                <div className="profile-card__secret-bias-header">
+                  <Eye size={13} />
+                  <span>Secret Intel</span>
+                </div>
+                <div className="profile-card__secret-bias-body">
+                  <AlertTriangle size={14} style={{ color: biasColor, flexShrink: 0 }} />
+                  <div>
+                    <div className="profile-card__secret-bias-label" style={{ color: biasColor }}>
+                      {biasLabel} the thesis
+                    </div>
+                    <div className="profile-card__secret-bias-desc">
+                      This "neutral" fact checker is secretly biased. Watch their sources carefully &mdash; they'll subtly push data favoring the <strong style={{ color: biasColor }}>{agent.secretBias}</strong> side while pretending to be objective.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </motion.div>
     </>
