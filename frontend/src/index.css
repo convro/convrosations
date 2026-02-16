@@ -680,20 +680,6 @@ body {
   white-space: nowrap;
 }
 
-.survey__topic-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 6px 14px;
-  background: rgba(245, 158, 11, 0.08);
-  border: 1px solid rgba(245, 158, 11, 0.12);
-  border-radius: var(--radius-full);
-  color: var(--warning);
-  font-size: 12px; font-weight: 600;
-  margin-bottom: 24px;
-  max-width: 100%;
-  overflow: hidden;
-}
-.survey__topic-badge span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 .survey__body {
   flex: 1; display: flex; flex-direction: column;
 }
@@ -1078,24 +1064,9 @@ body {
   font-weight: 800;
   letter-spacing: -0.2px;
   margin-bottom: 12px;
-}
-
-.debate-summary__winner--for {
-  background: rgba(52, 211, 153, 0.08);
-  color: #34d399;
-  border: 1px solid rgba(52, 211, 153, 0.15);
-}
-
-.debate-summary__winner--against {
-  background: rgba(251, 113, 133, 0.08);
-  color: #fb7185;
-  border: 1px solid rgba(251, 113, 133, 0.15);
-}
-
-.debate-summary__winner--tie {
-  background: rgba(148, 163, 184, 0.08);
-  color: #94a3b8;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  background: rgba(234, 179, 8, 0.08);
+  color: #eab308;
+  border: 1px solid rgba(234, 179, 8, 0.15);
 }
 
 .debate-summary__label {

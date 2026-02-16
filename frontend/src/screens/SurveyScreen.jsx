@@ -29,7 +29,7 @@ const STATIC_QUESTIONS = [
 const MIN_ANSWER_LENGTH = 15;
 const TOTAL_QUESTIONS = 6;
 
-export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
+export default function SurveyScreen({ topic, language = "en", onComplete, onBack, send, on }) {
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState(Array(TOTAL_QUESTIONS).fill(""));
   const [allQuestions, setAllQuestions] = useState(STATIC_QUESTIONS);
@@ -85,7 +85,7 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
       send?.({
         type: "generate_survey_questions",
         previousAnswers: answers.slice(0, 3),
-        language: "en",
+        language,
       });
       return;
     }
@@ -103,6 +103,23 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
       setCurrentQ(3);
     }
   }, [loadingAIQuestions, allQuestions.length, currentQ]);
+
+  // Timeout for AI question generation — fallback after 12s
+  useEffect(() => {
+    if (!loadingAIQuestions) return;
+    const timeout = setTimeout(() => {
+      if (loadingAIQuestions) {
+        // Use hardcoded fallback questions
+        setAllQuestions(prev => [...STATIC_QUESTIONS,
+          { id: 4, question: "Have you ever fought someone over the last item in the Lidl bakery section?", placeholder: "Be honest...", sponsor: "lidl" },
+          { id: 5, question: "What's the weirdest non-food item you've bought from the Lidl middle aisle?", placeholder: "A drill? Ski pants?", sponsor: null },
+          { id: 6, question: "If InPost paczkomaty had a new feature, what would you want?", placeholder: "Heated lockers? Coffee machine?", sponsor: "inpost" },
+        ]);
+        setLoadingAIQuestions(false);
+      }
+    }, 12000);
+    return () => clearTimeout(timeout);
+  }, [loadingAIQuestions]);
 
   const handleBack = () => {
     if (currentQ > 0) {
@@ -153,7 +170,7 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
       send({
         type: "validate_survey",
         qaPairs,
-        language: "en",
+        language,
       });
     } else {
       // Fallback if no send
