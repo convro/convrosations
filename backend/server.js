@@ -480,8 +480,9 @@ async function generateDebateSummary(topic, messages, agents, lang) {
     return `[${senderName} ${senderHandle}${fcLabel} (${senderStance})]: ${m.text}`;
   }).join("\n");
 
+  // Do NOT reveal FC secret bias to the summary bot — it should judge blind
   const participantList = agents.map(a => {
-    const role = a.isFactChecker ? "FACT CHECKER (secretly biased: " + a.secretBias + ")" : a.stance;
+    const role = a.isFactChecker ? "FACT CHECKER (claims to be neutral)" : a.stance;
     return `- ${a.name} (${a.handle}) [${role}]`;
   }).join("\n");
 
@@ -491,7 +492,13 @@ async function generateDebateSummary(topic, messages, agents, lang) {
     messages: [
       {
         role: "system",
-        content: `You are an impartial debate analyst. You will summarize a debate and declare a winner. Write in ${langInfo.promptLang}. Respond ONLY in JSON format: {"summary": "...", "winner": "..."} where summary is 7-8 sentences and winner is the name (and @handle) of the participant who argued most effectively.`,
+        content: `You are an impartial debate analyst. You will summarize a debate and declare a SINGLE WINNER. Write in ${langInfo.promptLang}. Respond ONLY in JSON format: {"summary": "...", "winner": "..."} where summary is 7-8 sentences and winner is the name (and @handle) of ONE specific participant.
+
+CRITICAL RULES:
+- You MUST pick exactly ONE winner. NO draws, NO ties, NO "both sides", NO "undetermined". There is ALWAYS a winner.
+- The winner is the participant who made the strongest, most persuasive, most compelling arguments.
+- If it's close, pick the one who had the single best moment or argument.
+- The winner field must contain ONLY one participant's name and @handle, nothing else.`,
       },
       {
         role: "user",
@@ -503,7 +510,7 @@ ${participantList}
 Full debate transcript:
 ${historyText}
 
-Analyze this debate. Write a 7-8 sentence summary covering: the main arguments from each side, key moments, the most compelling points, any notable fact-checks, and the overall dynamic. Then declare a winner — the participant who made the strongest, most persuasive arguments overall (not just who was loudest). Include their @handle. If the Fact Checker was biased, note whether anyone caught on. Respond as JSON: {"summary": "...", "winner": "..."}`,
+Analyze this debate. Write a 7-8 sentence summary covering: the main arguments from each side, key moments, the most compelling points, any notable fact-checks, and the overall dynamic. Then declare ONE winner — the single participant who argued most effectively. You MUST choose one. No ties allowed. Respond as JSON: {"summary": "...", "winner": "Name (@handle)"}`,
       },
     ],
   });
@@ -854,8 +861,8 @@ wss.on("connection", (ws) => {
       }
 
       case "generate_survey_questions": {
-        // Generate 3 AI follow-up questions based on topic and previous answers
-        const { topic: surveyTopic, previousAnswers, language: surveyLang } = msg;
+        // Generate 3 AI follow-up questions about Lidl/InPost (sponsored content, NOT debate topic)
+        const { previousAnswers, language: surveyLang } = msg;
         const langInfo = LANGUAGES[surveyLang] || LANGUAGES.en;
         try {
           const resp = await deepseek.chat.completions.create({
@@ -864,11 +871,11 @@ wss.on("connection", (ws) => {
             messages: [
               {
                 role: "system",
-                content: `You generate follow-up survey questions for a debate platform. The user already answered 3 initial questions about a debate topic. Now generate 3 MORE thought-provoking follow-up questions that dig deeper based on their answers. Questions should test if the user is actually thinking critically. Be creative, slightly provocative, and smart. Write in ${langInfo.promptLang}. Respond ONLY as JSON array of 3 objects: [{"question":"...","placeholder":"..."}]`,
+                content: `You generate fun, engaging follow-up survey questions about SHOPPING AT LIDL and USING INPOST PARCEL LOCKERS (paczkomaty). These are sponsored survey questions for a platform. The user already answered 3 questions about their Lidl shopping habits and InPost usage. Now generate 3 MORE creative follow-up questions about Lidl and InPost based on their answers. Questions should be fun, slightly cheeky, and feel like a consumer survey. DO NOT ask anything about debates, opinions on topics, or stances. ONLY about Lidl shopping and InPost parcels. Write in ${langInfo.promptLang}. Respond ONLY as JSON array of 3 objects: [{"question":"...","placeholder":"..."}]`,
               },
               {
                 role: "user",
-                content: `Topic: "${surveyTopic}"\n\nUser's previous answers:\n1. ${previousAnswers[0]}\n2. ${previousAnswers[1]}\n3. ${previousAnswers[2]}\n\nGenerate 3 follow-up questions that challenge their thinking.`,
+                content: `User's previous answers about Lidl & InPost:\n1. ${previousAnswers[0]}\n2. ${previousAnswers[1]}\n3. ${previousAnswers[2]}\n\nGenerate 3 more fun follow-up questions about their Lidl and InPost habits. Keep it purely about shopping and parcels.`,
               },
             ],
           });
@@ -878,20 +885,26 @@ wss.on("connection", (ws) => {
           broadcast(ws, { type: "survey_questions", questions });
         } catch (err) {
           console.error("[SURVEY] Error generating questions:", err.message);
-          // Fallback questions
+          // Fallback questions — still about Lidl/InPost
           broadcast(ws, { type: "survey_questions", questions: [
-            { question: "If you were proven completely wrong about this topic, how would that change your worldview?", placeholder: "Think deeply about this..." },
-            { question: "What's the most uncomfortable truth about your position that you'd rather not address?", placeholder: "Be honest with yourself..." },
-            { question: "Can you steelman the best argument against your own stance in 2-3 sentences?", placeholder: "Try to genuinely argue the other side..." },
+            { question: "Have you ever fought someone over the last item in the Lidl bakery section? Be honest.", placeholder: "We won't judge..." },
+            { question: "What's the weirdest non-food item you've ever bought from the Lidl middle aisle?", placeholder: "A drill? Ski pants? A kayak?" },
+            { question: "If InPost added a feature to their paczkomaty, what would you want? Heated lockers? A coffee machine?", placeholder: "Dream big..." },
           ]});
         }
         break;
       }
 
       case "validate_survey": {
-        // AI validates all 6 answers for BS
-        const { topic: valTopic, answers: valAnswers, language: valLang } = msg;
+        // AI validates all 6 question+answer pairs for BS
+        const { qaPairs, language: valLang } = msg;
         const valLangInfo = LANGUAGES[valLang] || LANGUAGES.en;
+
+        // Format Q&A pairs so AI sees the full context
+        const qaFormatted = (qaPairs || []).map((qa, i) =>
+          `Q${i+1}: ${qa.question}\nA${i+1}: ${qa.answer}`
+        ).join("\n\n");
+
         try {
           const resp = await deepseek.chat.completions.create({
             model: "deepseek-chat",
@@ -899,11 +912,11 @@ wss.on("connection", (ws) => {
             messages: [
               {
                 role: "system",
-                content: `You are a strict BS detector for a debate survey. Analyze the user's 6 answers and determine if they actually put thought into them or are just writing garbage to skip through. Check for: nonsensical text, lazy one-word-stretched answers, copy-pasted responses, answers that don't relate to the topic, contradictions that show they're not reading. Be HARSH. Respond ONLY as JSON: {"pass": true/false, "reason": "short explanation if failed"}. Write reason in ${valLangInfo.promptLang}.`,
+                content: `You are a BS detector for a sponsored survey about Lidl shopping and InPost parcel lockers. You will receive question-answer pairs. Analyze whether the user's answers actually ADDRESS the questions asked. Check for: answers that completely ignore the question, nonsensical gibberish, lazy repeated text, copy-pasted identical responses, or obvious trolling. Be fair — if the answer reasonably addresses the question (even casually or humorously), it PASSES. Only fail genuinely garbage/unrelated answers. Respond ONLY as JSON: {"pass": true/false, "reason": "short explanation if failed"}. Write reason in ${valLangInfo.promptLang}.`,
               },
               {
                 role: "user",
-                content: `Topic: "${valTopic}"\n\nAnswers:\n${valAnswers.map((a, i) => `${i+1}. ${a}`).join("\n")}`,
+                content: `Survey question-answer pairs:\n\n${qaFormatted}`,
               },
             ],
           });

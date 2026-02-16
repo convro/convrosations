@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, AlertTriangle, CheckCircle, XCircle, Loader } from "lucide-react";
+import { ArrowRight, ArrowLeft, CheckCircle, XCircle, Loader } from "lucide-react";
 
 const LIDL_LOGO = "https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftoppng.com%2Fuploads%2Fpreview%2Flidl-vector-logo-download-free-11574087712loacquwwxp.png&f=1&nofb=1&ipt=b916ba89441fba319473d609cf3d2ddc9bbd9526b5816e93ffa81f25bd14da1b";
 const INPOST_LOGO = "https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fimages.seeklogo.com%2Flogo-png%2F52%2F1%2Finpost-logo-png_seeklogo-526687.png&f=1&nofb=1&ipt=dc162b68ac543f44e0e95eb87f2efdbca261c974c3bd78b4fa65b337c074ffbb";
@@ -14,22 +14,22 @@ const STATIC_QUESTIONS = [
   },
   {
     id: 2,
-    question: "What's your stance on the topic before the debate starts?",
-    placeholder: "Describe your initial opinion honestly...",
-    sponsor: null,
+    question: "When was the last time you used an InPost paczkomat and how was the experience?",
+    placeholder: "Share your InPost parcel locker experience...",
+    sponsor: "inpost",
   },
   {
     id: 3,
-    question: "When was the last time you used an InPost paczkomat and how was the experience?",
-    placeholder: "Share your InPost experience...",
-    sponsor: "inpost",
+    question: "What's your favorite Lidl weekly special you've ever scored? The bakery counts too!",
+    placeholder: "That one deal you still think about...",
+    sponsor: "lidl",
   },
 ];
 
 const MIN_ANSWER_LENGTH = 15;
 const TOTAL_QUESTIONS = 6;
 
-export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
+export default function SurveyScreen({ topic, language = "en", onComplete, onBack, send, on }) {
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState(Array(TOTAL_QUESTIONS).fill(""));
   const [allQuestions, setAllQuestions] = useState(STATIC_QUESTIONS);
@@ -84,9 +84,8 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
       setLoadingAIQuestions(true);
       send?.({
         type: "generate_survey_questions",
-        topic,
         previousAnswers: answers.slice(0, 3),
-        language: "en",
+        language,
       });
       return;
     }
@@ -104,6 +103,23 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
       setCurrentQ(3);
     }
   }, [loadingAIQuestions, allQuestions.length, currentQ]);
+
+  // Timeout for AI question generation — fallback after 12s
+  useEffect(() => {
+    if (!loadingAIQuestions) return;
+    const timeout = setTimeout(() => {
+      if (loadingAIQuestions) {
+        // Use hardcoded fallback questions
+        setAllQuestions(prev => [...STATIC_QUESTIONS,
+          { id: 4, question: "Have you ever fought someone over the last item in the Lidl bakery section?", placeholder: "Be honest...", sponsor: "lidl" },
+          { id: 5, question: "What's the weirdest non-food item you've bought from the Lidl middle aisle?", placeholder: "A drill? Ski pants?", sponsor: null },
+          { id: 6, question: "If InPost paczkomaty had a new feature, what would you want?", placeholder: "Heated lockers? Coffee machine?", sponsor: "inpost" },
+        ]);
+        setLoadingAIQuestions(false);
+      }
+    }, 12000);
+    return () => clearTimeout(timeout);
+  }, [loadingAIQuestions]);
 
   const handleBack = () => {
     if (currentQ > 0) {
@@ -145,11 +161,16 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
 
     // Then send to AI for deeper validation
     if (send) {
+      // Send questions AND answers as pairs so AI knows context
+      const qaPairs = allQuestions.map((q, i) => ({
+        question: q.question,
+        answer: answers[i] || "",
+      })).filter(qa => qa.answer.trim().length > 0);
+
       send({
         type: "validate_survey",
-        topic,
-        answers: answers.filter(a => a.trim().length > 0),
-        language: "en",
+        qaPairs,
+        language,
       });
     } else {
       // Fallback if no send
@@ -233,11 +254,6 @@ export default function SurveyScreen({ topic, onComplete, onBack, send, on }) {
           </div>
           <span className="survey__progress-text">{currentQ + 1}/{TOTAL_QUESTIONS}</span>
         </div>
-      </div>
-
-      <div className="survey__topic-badge">
-        <AlertTriangle size={12} />
-        <span>{topic}</span>
       </div>
 
       <AnimatePresence mode="wait">

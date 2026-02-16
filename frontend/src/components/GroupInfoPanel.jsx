@@ -160,17 +160,25 @@ export default function GroupInfoPanel({ group, agents, settings, onSettingsChan
             {/* Aggressiveness */}
             <div className="setting-card">
               <div className="setting-card__label">Debate intensity</div>
+              <div className="setting-card__sub">
+                {(settings.aggressiveness ?? 50) <= 15 ? "Calm" :
+                 (settings.aggressiveness ?? 50) <= 35 ? "Moderate" :
+                 (settings.aggressiveness ?? 50) <= 55 ? "Heated" :
+                 (settings.aggressiveness ?? 50) <= 75 ? "Aggressive" :
+                 (settings.aggressiveness ?? 50) <= 90 ? "Toxic" : "RAGE"}
+              </div>
               <div className="setting-card__control">
-                <select
-                  className="setting-card__select"
-                  value={settings.aggressiveness}
-                  onChange={e => onSettingsChange({ ...settings, aggressiveness: e.target.value })}
-                >
-                  <option value="calm">Calm</option>
-                  <option value="moderate">Moderate</option>
-                  <option value="heated">Heated</option>
-                  <option value="aggressive">Aggressive</option>
-                </select>
+                <input
+                  type="range" min={0} max={100} step={1}
+                  className="setting-card__range"
+                  value={settings.aggressiveness ?? 50}
+                  onChange={e => onSettingsChange({ ...settings, aggressiveness: +e.target.value })}
+                />
+                <div className="setting-card__range-labels">
+                  <span className="setting-card__range-label">Calm</span>
+                  <span className="setting-card__range-value">{settings.aggressiveness ?? 50}%</span>
+                  <span className="setting-card__range-label">RAGE</span>
+                </div>
               </div>
             </div>
 

@@ -42,20 +42,20 @@ function getAggrLabel(val) {
 /* ── Info Modal Component ────────────────────────── */
 function InfoModal({ title, children, onClose }) {
   return (
-    <>
-      <motion.div
-        className="info-modal__overlay"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      />
+    <motion.div
+      className="info-modal__overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
       <motion.div
         className="info-modal"
-        initial={{ opacity: 0, scale: 0.92, y: 12 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.92, y: 12 }}
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.92 }}
         transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        onClick={e => e.stopPropagation()}
       >
         <div className="info-modal__header">
           <span className="info-modal__title">{title}</span>
@@ -63,7 +63,7 @@ function InfoModal({ title, children, onClose }) {
         </div>
         <div className="info-modal__body">{children}</div>
       </motion.div>
-    </>
+    </motion.div>
   );
 }
 

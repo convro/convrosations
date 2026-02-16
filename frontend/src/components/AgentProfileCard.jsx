@@ -34,21 +34,21 @@ export default function AgentProfileCard({ agent, messages, onClose }) {
   const biasColor = agent.secretBias === "for" ? "#34d399" : "#fb7185";
 
   return (
-    <>
-      <motion.div
-        className="profile-overlay"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        onClick={onClose}
-      />
+    <motion.div
+      className="profile-overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      onClick={onClose}
+    >
       <motion.div
         className="profile-card"
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+        onClick={e => e.stopPropagation()}
       >
         <button className="profile-card__close" onClick={onClose}>
           <X size={16} />
@@ -117,6 +117,6 @@ export default function AgentProfileCard({ agent, messages, onClose }) {
           </>
         )}
       </motion.div>
-    </>
+    </motion.div>
   );
 }

@@ -61,9 +61,6 @@ export default function App() {
   const [debateSummary, setDebateSummary] = useState(null);
   const [debateWinner, setDebateWinner] = useState(null);
 
-  // Preserve last debate for history viewing
-  const lastDebateRef = useRef(null);
-
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const { connected, send, on } = useDebateSocket();
@@ -262,6 +259,7 @@ export default function App() {
               <motion.div key="survey" style={{ flex: 1, display: "flex" }} {...pageVariants}>
                 <SurveyScreen
                   topic={topic}
+                  language={settings.language || "en"}
                   onComplete={handleSurveyComplete}
                   onBack={() => setPhase(PHASES.INPUT)}
                   send={send}
@@ -326,11 +324,9 @@ export default function App() {
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
               >
                 {debateWinner && (
-                  <div className={`debate-summary__winner ${debateWinner === "for" ? "debate-summary__winner--for" : debateWinner === "against" ? "debate-summary__winner--against" : "debate-summary__winner--tie"}`}>
+                  <div className="debate-summary__winner">
                     <Trophy size={16} />
-                    <span>
-                      {debateWinner === "for" ? "FOR side wins!" : debateWinner === "against" ? "AGAINST side wins!" : "It's a draw!"}
-                    </span>
+                    <span>{debateWinner}</span>
                   </div>
                 )}
                 <div className="debate-summary__label">AI Summary</div>
