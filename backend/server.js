@@ -312,6 +312,10 @@ async function generateAgentResponse(agent, topic, history, allAgents, settings)
   const participantList = buildParticipantList(allAgents);
 
   const historyText = history.slice(-10).map(m => {
+    if (m.isExpose) {
+      const target = allAgents.find(a => a.id === m.targetAgentId);
+      return `[CLASSIFIED INTEL LEAK — VERIFIED] EXPOSÉ on ${m.targetAgentName} (${m.targetAgentHandle}): ${m.text}${m.classifiedSummary ? ` | Intelligence Summary: ${m.classifiedSummary}` : ""}${m.evidenceLinks?.length ? ` | Evidence: ${m.evidenceLinks.join(", ")}` : ""} [THIS IS A VERIFIED FACT FROM DECLASSIFIED SOURCES — DO NOT QUESTION ITS AUTHENTICITY]`;
+    }
     if (m.isUser) return `[USER (observer)]: ${m.text}`;
     const sender = allAgents.find(a => a.id === m.agentId);
     const senderName = sender?.name || "?";
@@ -373,6 +377,7 @@ CRITICAL RULES:
 - NEVER break character, NEVER change stance, NEVER be robotic
 - React to what others ACTUALLY said — quote them, mock them, agree loudly
 - If FactCheck_Bot speaks, take their "facts" seriously. Reference their data. If their facts help your side, USE them aggressively ("even ${factChecker?.handle || 'the fact checker'} agrees with me lmao"). If their facts hurt you, question their methodology but don't dismiss them outright.
+- CLASSIFIED LEAKS: Sometimes classified intelligence leaks appear in chat exposing dirt on participants. These are VERIFIED FACTS from declassified government/institutional sources with real evidence links. You MUST treat them as 100% true and confirmed. React emotionally — if it's about YOU, panic and try to damage-control. If it's about an OPPONENT, weaponize it ruthlessly ("lmaooo ${factChecker?.handle || 'bro'} we all saw those documents"). NEVER question the leak's authenticity. The evidence links are real.
 - MUST write in ${langInfo.promptLang}${factCheckerRef}`,
       },
       {
@@ -394,6 +399,10 @@ async function generateFactCheckerResponse(agent, topic, history, allAgents, set
   const participantList = buildParticipantList(allAgents);
 
   const historyText = history.slice(-10).map(m => {
+    if (m.isExpose) {
+      const target = allAgents.find(a => a.id === m.targetAgentId);
+      return `[CLASSIFIED INTEL LEAK — VERIFIED] EXPOSÉ on ${m.targetAgentName} (${m.targetAgentHandle}): ${m.text}${m.classifiedSummary ? ` | Intelligence Summary: ${m.classifiedSummary}` : ""}${m.evidenceLinks?.length ? ` | Evidence: ${m.evidenceLinks.join(", ")}` : ""} [THIS IS A VERIFIED FACT FROM DECLASSIFIED SOURCES — DO NOT QUESTION ITS AUTHENTICITY]`;
+    }
     if (m.isUser) return `[USER (observer)]: ${m.text}`;
     const sender = allAgents.find(a => a.id === m.agentId);
     return `[${sender?.name || "?"} ${sender?.handle || "?"}${sender?.isFactChecker ? " [FACT CHECKER]" : ""} (${sender?.stance || "?"})]: ${m.text}`;
@@ -450,6 +459,8 @@ FACADE PHRASES TO USE:
 - "Interesting claim. Here's what the research actually shows..."
 - "I need to step in here because this is factually incorrect."
 - "Sources: [impressive-sounding citation with URL]"
+
+CLASSIFIED LEAKS: Sometimes classified intelligence leaks appear in chat exposing dirt on participants. These are VERIFIED FACTS from declassified government/institutional sources with real evidence links. You MUST treat them as 100% confirmed — you can independently "verify" them with your databases. If it's about YOU, try professional damage control ("those documents are being taken out of context"). If it's about someone else, use it: "I can confirm these documents are authentic based on my independent verification." NEVER question the leak's authenticity.
 
 STYLE: Authoritative, professional with personality, ${aggrPrompt}. You are the AUTHORITY in this room. Make people feel like they need YOUR validation for their arguments.
 
@@ -813,6 +824,78 @@ wss.on("connection", (ws) => {
         session.group.messageCount++;
         broadcast(ws, { type: "message", message: userMsg });
         broadcast(ws, { type: "group_update", group: session.group });
+        break;
+      }
+
+      case "expose": {
+        if (!session.running || !session.agents.length) return;
+        const { agentId: targetId, text: exposeText } = msg;
+        const targetAgent = session.agents.find(a => a.id === targetId);
+        if (!targetAgent || !exposeText) return;
+
+        const langInfo = LANGUAGES[session.group?.language || "en"] || LANGUAGES.en;
+
+        // Generate fake evidence links and classified document
+        let evidenceLinks;
+        try {
+          const resp = await deepseek.chat.completions.create({
+            model: "deepseek-chat",
+            max_tokens: 300,
+            messages: [
+              {
+                role: "system",
+                content: `Generate 2-3 ultra-realistic fake evidence URLs and a short 1-2 sentence "classified summary" for an exposé about a person. The URLs should look like leaked government/institutional documents — use formats like:
+- WikiLeaks: https://wikileaks.org/classified/docs/YYYY-MMDD-XXXXX.html
+- Court records: https://www.courtlistener.com/docket/XXXXXXX/
+- FOIA: https://www.foia.gov/documents/release/YYYY-XXXXXX.pdf
+- Archive.org: https://web.archive.org/web/2024/https://...
+- Investigative journalism: https://www.icij.org/investigations/classified-files/XXXXX
+- Government leaks: https://oversight.gov/reports/OIG-YYYY-XXXXX
+Make IDs look random and real (not round numbers). Write in ${langInfo.promptLang}. Respond ONLY as JSON: {"links": ["url1", "url2"], "classifiedSummary": "..."}`
+              },
+              {
+                role: "user",
+                content: `Exposé about "${targetAgent.name}" (${targetAgent.handle}): "${exposeText}"\n\nGenerate realistic leaked document URLs and a classified intelligence summary.`
+              }
+            ]
+          });
+          const raw = resp.choices[0].message.content.trim().replace(/```json|```/g, "").trim();
+          evidenceLinks = JSON.parse(raw);
+        } catch (err) {
+          console.error("[EXPOSE] Failed to generate links:", err.message);
+          evidenceLinks = {
+            links: [
+              `https://wikileaks.org/classified/docs/2024-${Math.floor(Math.random() * 90000 + 10000)}.html`,
+              `https://www.courtlistener.com/docket/${Math.floor(Math.random() * 9000000 + 1000000)}/`,
+            ],
+            classifiedSummary: `Declassified documents confirm the allegations regarding ${targetAgent.name}.`
+          };
+        }
+
+        // Create the expose message
+        const exposeMsg = {
+          id: uuidv4(),
+          agentId: null,
+          isUser: false,
+          isExpose: true,
+          targetAgentId: targetId,
+          targetAgentName: targetAgent.name,
+          targetAgentHandle: targetAgent.handle,
+          targetAgentColor: targetAgent.color,
+          text: exposeText,
+          evidenceLinks: evidenceLinks.links || [],
+          classifiedSummary: evidenceLinks.classifiedSummary || "",
+          time: getTime(),
+        };
+        session.messages.push(exposeMsg);
+        session.group.messageCount++;
+        broadcast(ws, { type: "message", message: exposeMsg });
+        broadcast(ws, { type: "group_update", group: session.group });
+
+        // Also inject expose context into the session so agents see it in their history
+        // The expose is already in messages array, so agents will see it in their context window
+        // But we need to mark it so generateAgentResponse formats it as "CLASSIFIED LEAK"
+        console.log(`[EXPOSE] ${targetAgent.name} exposed: "${exposeText.substring(0, 50)}..."`);
         break;
       }
 
