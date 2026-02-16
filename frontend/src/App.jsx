@@ -14,7 +14,8 @@ import TopicInputScreen from "./screens/TopicInputScreen.jsx";
 import LoadingScreen from "./screens/LoadingScreen.jsx";
 import DebateHistoryScreen from "./screens/DebateHistoryScreen.jsx";
 import SurveyScreen from "./screens/SurveyScreen.jsx";
-import { Swords, MoreVertical, ArrowLeft, History, Trophy } from "lucide-react";
+import ExposeSheet from "./components/ExposeSheet.jsx";
+import { Swords, MoreVertical, ArrowLeft, History, Trophy, FileWarning } from "lucide-react";
 
 const PHASES = {
   WELCOME: "welcome",
@@ -60,6 +61,7 @@ export default function App() {
   const [replyMap, setReplyMap] = useState({});
   const [debateSummary, setDebateSummary] = useState(null);
   const [debateWinner, setDebateWinner] = useState(null);
+  const [showExpose, setShowExpose] = useState(false);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -208,6 +210,11 @@ export default function App() {
     setProfileAgent(agent);
   }, []);
 
+  const handleExpose = useCallback(({ agentId, text }) => {
+    send({ type: "expose", agentId, text });
+    toast("Expose dropped! Agents will react...", { icon: "💣" });
+  }, [send]);
+
   const replyAgent = replyingTo ? agents.find(a => a.id === replyingTo.agentId) : null;
 
   /* -- Render -------------------------------------- */
@@ -301,6 +308,13 @@ export default function App() {
           </AnimatePresence>
         </div>
 
+        {/* Expose FAB */}
+        {phase === PHASES.DEBATE && (
+          <button className="expose-fab" onClick={() => setShowExpose(true)}>
+            <FileWarning size={18} />
+          </button>
+        )}
+
         {phase === PHASES.DEBATE && settings.allowUserJoin && (
           <InputBar
             value={userInput}
@@ -380,6 +394,16 @@ export default function App() {
                 onAgentClick={handleAvatarClick}
               />
             </>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showExpose && (
+            <ExposeSheet
+              agents={agents}
+              onSend={handleExpose}
+              onClose={() => setShowExpose(false)}
+            />
           )}
         </AnimatePresence>
 

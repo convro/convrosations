@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Avatar from "./Avatar.jsx";
-import { Reply, Forward, X } from "lucide-react";
+import { Reply, Forward, X, FileWarning, ExternalLink } from "lucide-react";
 
 const messageVariants = {
   initial: { opacity: 0, y: 8, scale: 0.97 },
@@ -69,6 +69,44 @@ export default function Message({ msg, agents, onReply, onForward, onAvatarClick
   }, []);
 
   const replyAgent = replyTo ? agents.find(a => a.id === replyTo.agentId) : null;
+
+  /* -- Expose message ------------------------------- */
+  if (msg.isExpose) {
+    return (
+      <motion.div className="message message--expose" {...messageVariants}>
+        <div className="expose-bubble">
+          <div className="expose-bubble__header">
+            <FileWarning size={16} className="expose-bubble__icon" />
+            <span className="expose-bubble__tag">CLASSIFIED INTEL LEAK</span>
+          </div>
+          <div className="expose-bubble__target">
+            <span>Target: </span>
+            <strong style={{ color: msg.targetAgentColor }}>{msg.targetAgentName}</strong>
+            <span style={{ color: "var(--text-tertiary)", fontSize: 11 }}> {msg.targetAgentHandle}</span>
+          </div>
+          <div className="expose-bubble__text">{msg.text}</div>
+          {msg.classifiedSummary && (
+            <div className="expose-bubble__summary">{msg.classifiedSummary}</div>
+          )}
+          {msg.evidenceLinks?.length > 0 && (
+            <div className="expose-bubble__links">
+              <div className="expose-bubble__links-label">Evidence:</div>
+              {msg.evidenceLinks.map((link, i) => (
+                <div key={i} className="expose-bubble__link">
+                  <ExternalLink size={10} />
+                  <span>{link}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="expose-bubble__footer">
+            <span className="expose-bubble__stamp">DECLASSIFIED</span>
+            <span className="expose-bubble__time">{msg.time}</span>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
 
   /* -- User message --------------------------------- */
   if (msg.isUser) {
