@@ -480,8 +480,9 @@ async function generateDebateSummary(topic, messages, agents, lang) {
     return `[${senderName} ${senderHandle}${fcLabel} (${senderStance})]: ${m.text}`;
   }).join("\n");
 
+  // Do NOT reveal FC secret bias to the summary bot — it should judge blind
   const participantList = agents.map(a => {
-    const role = a.isFactChecker ? "FACT CHECKER (secretly biased: " + a.secretBias + ")" : a.stance;
+    const role = a.isFactChecker ? "FACT CHECKER (claims to be neutral)" : a.stance;
     return `- ${a.name} (${a.handle}) [${role}]`;
   }).join("\n");
 
@@ -491,7 +492,13 @@ async function generateDebateSummary(topic, messages, agents, lang) {
     messages: [
       {
         role: "system",
-        content: `You are an impartial debate analyst. You will summarize a debate and declare a winner. Write in ${langInfo.promptLang}. Respond ONLY in JSON format: {"summary": "...", "winner": "..."} where summary is 7-8 sentences and winner is the name (and @handle) of the participant who argued most effectively.`,
+        content: `You are an impartial debate analyst. You will summarize a debate and declare a SINGLE WINNER. Write in ${langInfo.promptLang}. Respond ONLY in JSON format: {"summary": "...", "winner": "..."} where summary is 7-8 sentences and winner is the name (and @handle) of ONE specific participant.
+
+CRITICAL RULES:
+- You MUST pick exactly ONE winner. NO draws, NO ties, NO "both sides", NO "undetermined". There is ALWAYS a winner.
+- The winner is the participant who made the strongest, most persuasive, most compelling arguments.
+- If it's close, pick the one who had the single best moment or argument.
+- The winner field must contain ONLY one participant's name and @handle, nothing else.`,
       },
       {
         role: "user",
@@ -503,7 +510,7 @@ ${participantList}
 Full debate transcript:
 ${historyText}
 
-Analyze this debate. Write a 7-8 sentence summary covering: the main arguments from each side, key moments, the most compelling points, any notable fact-checks, and the overall dynamic. Then declare a winner — the participant who made the strongest, most persuasive arguments overall (not just who was loudest). Include their @handle. If the Fact Checker was biased, note whether anyone caught on. Respond as JSON: {"summary": "...", "winner": "..."}`,
+Analyze this debate. Write a 7-8 sentence summary covering: the main arguments from each side, key moments, the most compelling points, any notable fact-checks, and the overall dynamic. Then declare ONE winner — the single participant who argued most effectively. You MUST choose one. No ties allowed. Respond as JSON: {"summary": "...", "winner": "Name (@handle)"}`,
       },
     ],
   });
